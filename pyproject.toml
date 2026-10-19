@@ -7,7 +7,12 @@ authors = [
     { name = "Varun Mohanraj", email = "reachvarunm@gmail.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "numpy>=2.5.4",
+    "pyyaml>=6.0.3",
+    "torch>=2.14.1",
+    "tqdm>=4.70.1",
+]
 
 [project.scripts]
 forgelm = "forgelm:main"
@@ -15,3 +20,9 @@ forgelm = "forgelm:main"
 [build-system]
 requires = ["uv_build>=0.13.1,<0.14.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.17.1",
+]
