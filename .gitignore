@@ -1,6 +1,8 @@
 # Python-generated files
 __pycache__/
 *.py[oc]
+.pytest_cache/
+.ruff_cache/
 build/
 dist/
 wheels/
@@ -8,3 +10,15 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Local datasets (keep directory placeholders)
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
+# Experiment outputs
+checkpoints/
+artifacts/
+outputs/
+wandb/
