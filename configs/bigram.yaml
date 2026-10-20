@@ -1,0 +1,8 @@
+seed: 1337
+batch_size: 32
+block_size: 8
+max_steps: 3000
+evaluation_interval: 100
+evaluation_batches: 20
+learning_rate: 0.01
+generation_length: 200

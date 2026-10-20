@@ -15,9 +15,14 @@ ForgeLM is an end-to-end project for training, evaluating, fine-tuning, and serv
 ## Current status
 
 The project foundation is complete, including the package layout and shared
-seeding and device helpers. Phase 1A adds character-level tokenization,
-reproducible language-model batching, and a Tiny Shakespeare download script
-for pipeline validation. No model has been implemented or trained yet.
+seeding and device helpers. Phase 1A is complete with character-level
+tokenization, reproducible language-model batching, and a Tiny Shakespeare
+download script for pipeline validation.
+
+Phase 1B is the current baseline-model phase. It adds the first trainable model:
+a small character-level bigram language model with evaluation and checkpointing.
+Full training results are not available yet, and attention and Transformer
+models remain future work.
 
 ## Layout
 
