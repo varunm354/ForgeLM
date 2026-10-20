@@ -14,7 +14,10 @@ ForgeLM is an end-to-end project for training, evaluating, fine-tuning, and serv
 
 ## Current status
 
-The foundation is in place: package directories, gitignore rules for local data and experiment outputs, and shared helpers for seeding and device selection. Tokenization, dataset download, the model, the training loop, evaluation, and serving are not implemented yet.
+The project foundation is complete, including the package layout and shared
+seeding and device helpers. Phase 1A adds character-level tokenization,
+reproducible language-model batching, and a Tiny Shakespeare download script
+for pipeline validation. No model has been implemented or trained yet.
 
 ## Layout
 
