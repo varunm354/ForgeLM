@@ -95,3 +95,50 @@ class SingleHeadCausalSelfAttention(nn.Module):
     def _validate_positive_integer(value: int, name: str) -> None:
         if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
             raise ValueError(f"{name} must be a positive integer.")
+
+
+class MultiHeadCausalSelfAttention(nn.Module):
+    """Combine parallel causal attention heads and project their outputs."""
+
+    def __init__(
+        self,
+        embedding_dim: int,
+        num_heads: int,
+        block_size: int,
+        dropout: float = 0.0,
+    ) -> None:
+        super().__init__()
+        SingleHeadCausalSelfAttention._validate_positive_integer(
+            embedding_dim,
+            "embedding_dim",
+        )
+        SingleHeadCausalSelfAttention._validate_positive_integer(
+            num_heads,
+            "num_heads",
+        )
+        if embedding_dim % num_heads != 0:
+            raise ValueError("embedding_dim must be divisible by num_heads.")
+
+        head_size = embedding_dim // num_heads
+        self.embedding_dim = embedding_dim
+        self.num_heads = num_heads
+        self.block_size = block_size
+        self.heads = nn.ModuleList(
+            [
+                SingleHeadCausalSelfAttention(
+                    embedding_size=embedding_dim,
+                    head_size=head_size,
+                    block_size=block_size,
+                    dropout=dropout,
+                )
+                for _ in range(num_heads)
+            ]
+        )
+        self.output_projection = nn.Linear(embedding_dim, embedding_dim)
+        self.output_dropout = nn.Dropout(float(dropout))
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        """Run every head over inputs, concatenate, and project the result."""
+        head_outputs = [head(inputs) for head in self.heads]
+        concatenated = torch.cat(head_outputs, dim=-1)
+        return self.output_dropout(self.output_projection(concatenated))

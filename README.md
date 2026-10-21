@@ -20,9 +20,13 @@ tokenization, reproducible language-model batching, and a Tiny Shakespeare
 download script for pipeline validation.
 
 Phase 1B is complete: the character-level bigram baseline was trained and
-evaluated on Tiny Shakespeare. Phase 2A is now implementing a single causal
-self-attention head with explicit attention mathematics. A complete Transformer
-has not been implemented or trained.
+evaluated on Tiny Shakespeare. Phase 2A completed a single causal self-attention
+head with explicit attention mathematics.
+
+Phase 2B now contains explicit multi-head causal self-attention, a position-wise
+feed-forward network, layer normalization, residual connections, and a complete
+pre-norm Transformer block. These are reusable model components; a full
+Transformer language model has not been assembled or trained yet.
 
 ## Bigram baseline results
 
