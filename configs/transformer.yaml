@@ -1,0 +1,13 @@
+seed: 1337
+batch_size: 32
+block_size: 128
+embedding_dim: 128
+num_heads: 4
+num_layers: 4
+dropout: 0.2
+max_steps: 5000
+evaluation_interval: 250
+evaluation_batches: 20
+learning_rate: 0.0003
+weight_decay: 0.01
+generation_length: 500

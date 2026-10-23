@@ -23,10 +23,15 @@ Phase 1B is complete: the character-level bigram baseline was trained and
 evaluated on Tiny Shakespeare. Phase 2A completed a single causal self-attention
 head with explicit attention mathematics.
 
-Phase 2B now contains explicit multi-head causal self-attention, a position-wise
+Phase 2B contains explicit multi-head causal self-attention, a position-wise
 feed-forward network, layer normalization, residual connections, and a complete
-pre-norm Transformer block. These are reusable model components; a full
-Transformer language model has not been assembled or trained yet.
+pre-norm Transformer block.
+
+Phase 2C now assembles those components into a complete decoder-only Transformer
+language model with token and learned positional embeddings, stacked Transformer
+blocks, next-token cross-entropy training, autoregressive generation, and a
+configurable training script. The full 5,000-step Transformer training run has
+not been completed yet.
 
 ## Bigram baseline results
 
