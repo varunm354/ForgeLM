@@ -27,22 +27,33 @@ Phase 2B contains explicit multi-head causal self-attention, a position-wise
 feed-forward network, layer normalization, residual connections, and a complete
 pre-norm Transformer block.
 
-Phase 2C now assembles those components into a complete decoder-only Transformer
+Phase 2C assembled those components into a complete decoder-only Transformer
 language model with token and learned positional embeddings, stacked Transformer
 blocks, next-token cross-entropy training, autoregressive generation, and a
-configurable training script. The full 5,000-step Transformer training run has
-not been completed yet.
+configurable training script. Its 5,000-step Tiny Shakespeare baseline run is
+complete.
 
-## Bigram baseline results
+Phase 2D adds deterministic full-corpus evaluation so the best Bigram and
+Transformer checkpoints can be compared over every validation target exactly
+once.
 
-| Metric | Initial | Final |
-| --- | ---: | ---: |
-| Training loss / perplexity | 4.7455 / 115.06 | 2.4546 / 11.64 |
-| Validation loss / perplexity | 4.7017 / 110.13 | 2.4597 / 11.70 |
+## Baseline comparison
 
-The 4,225-parameter model trained for 3,000 steps on CPU in 9.51 seconds. See
-the [complete baseline report](reports/bigram_baseline.md) for configuration,
-interpretation, and generated text.
+These are the final sampled training-run metrics:
+
+| Model | Parameters | Validation loss | Validation perplexity |
+| --- | ---: | ---: | ---: |
+| Bigram | 4,225 | 2.4597 | 11.70 |
+| Transformer | 824,897 | 1.7348 | 5.67 |
+| Improvement | — | 29.47% lower | 51.54% lower |
+
+See the [Bigram report](reports/bigram_baseline.md) and
+[Transformer report](reports/transformer_baseline.md). Run the separate
+deterministic benchmark with:
+
+```bash
+uv run python scripts/compare_baselines.py --device cpu
+```
 
 ## Layout
 
