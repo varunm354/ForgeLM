@@ -64,6 +64,18 @@ def test_learned_token_ids_are_sequential() -> None:
     assert tokenizer.token_bytes(257) == b"abc"
 
 
+def test_token_byte_length_supports_base_and_merged_tokens() -> None:
+    tokenizer = BytePairTokenizer(258)
+    tokenizer.train("abcabc")
+
+    assert tokenizer.token_byte_length(ord("a")) == 1
+    assert tokenizer.token_byte_length(256) == 2
+    assert tokenizer.token_byte_length(257) == 3
+
+    with pytest.raises(ValueError, match="Invalid token ID"):
+        tokenizer.token_byte_length(258)
+
+
 def test_encoding_applies_merges_in_learned_order() -> None:
     tokenizer = BytePairTokenizer(258)
     tokenizer.train("abcabc")
@@ -160,6 +172,16 @@ def test_json_save_load_preserves_encoding(tmp_path: Path) -> None:
     assert loaded.encode("banana unseen 🌍") == tokenizer.encode(
         "banana unseen 🌍"
     )
+    assert loaded.fingerprint() == tokenizer.fingerprint()
+
+
+def test_fingerprint_changes_with_merge_rules() -> None:
+    first = BytePairTokenizer(257)
+    second = BytePairTokenizer(257)
+    first.train("abab")
+    second.train("acac")
+
+    assert first.fingerprint() != second.fingerprint()
 
 
 def test_saved_json_records_required_metadata(tmp_path: Path) -> None:

@@ -3,7 +3,22 @@
 import pytest
 import torch
 
-from forgelm.data.dataset import get_batch, train_validation_split
+from forgelm.data.dataset import (
+    get_batch,
+    train_validation_split,
+    train_validation_text_split,
+)
+
+
+def test_raw_text_split_is_deterministic_and_contiguous() -> None:
+    text = "abcdefghij"
+
+    first = train_validation_text_split(text, train_fraction=0.7)
+    second = train_validation_text_split(text, train_fraction=0.7)
+
+    assert first == ("abcdefg", "hij")
+    assert second == first
+    assert "".join(first) == text
 
 
 def test_train_validation_split_is_contiguous() -> None:

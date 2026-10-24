@@ -40,8 +40,18 @@ once.
 Phase 3A adds a deterministic byte-level BPE tokenizer trained from scratch.
 Its 256-byte base vocabulary supports arbitrary UTF-8 text without unknown
 tokens, while 256 learned merges reduce Tiny Shakespeare from 1,115,394
-character tokens to 691,315 BPE tokens. The Transformer has not yet been
-retrained with BPE.
+character tokens to 691,315 BPE tokens.
+
+Phase 3B integrates BPE with the Transformer training pipeline. Raw text is
+split before tokenizer training, so merges are learned from the 90% training
+portion only and validation text cannot leak into the vocabulary. Tokenizer
+artifacts have stable SHA-256 fingerprints recorded in checkpoints for
+compatibility validation. The BPE pipeline has been smoke-tested, but its full
+5,000-step training run has not been completed.
+
+Character-level and BPE token-level perplexities are not directly comparable:
+their tokens represent different amounts of source text. A byte-normalized
+metric will be added separately.
 
 See the [BPE tokenizer report](reports/bpe_tokenizer.md) for the algorithm,
 compression results, and limitations.

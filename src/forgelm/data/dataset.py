@@ -3,6 +3,22 @@
 import torch
 
 
+def train_validation_text_split(
+    text: str,
+    train_fraction: float = 0.9,
+) -> tuple[str, str]:
+    """Split raw text contiguously into training and validation portions."""
+    if not isinstance(text, str):
+        raise TypeError("text must be a string.")
+    if not 0.0 < train_fraction < 1.0:
+        raise ValueError("train_fraction must be between 0 and 1.")
+
+    split_index = int(len(text) * train_fraction)
+    if split_index == 0 or split_index == len(text):
+        raise ValueError("The split must leave at least one character in each set.")
+    return text[:split_index], text[split_index:]
+
+
 def train_validation_split(
     tokens: torch.Tensor,
     train_fraction: float = 0.9,

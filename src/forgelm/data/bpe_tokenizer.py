@@ -1,5 +1,6 @@
 """Deterministic byte-level byte-pair encoding."""
 
+import hashlib
 import json
 import re
 from collections import Counter
@@ -126,10 +127,30 @@ class BytePairTokenizer:
             raise ValueError(f"Invalid token ID: {token_id!r}")
         return self._token_bytes[token_id]
 
+    def token_byte_length(self, token_id: int) -> int:
+        """Return the exact decoded byte length represented by a token."""
+        return len(self.token_bytes(token_id))
+
+    def fingerprint(self) -> str:
+        """Return a stable SHA-256 identity for this tokenizer."""
+        canonical_json = json.dumps(
+            self._to_data(),
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
+
     def save(self, path: str | Path) -> None:
         """Save vocabulary metadata and ordered merges as JSON."""
         destination = Path(path)
         destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(
+            json.dumps(self._to_data(), indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+    def _to_data(self) -> dict[str, Any]:
         merge_data = []
         for rank, (left, right) in enumerate(self.merges):
             token_id = BASE_VOCAB_SIZE + rank
@@ -142,7 +163,7 @@ class BytePairTokenizer:
                 }
             )
 
-        data = {
+        return {
             "format": FORMAT_NAME,
             "version": FORMAT_VERSION,
             "base_vocabulary": {
@@ -155,10 +176,6 @@ class BytePairTokenizer:
             "effective_vocab_size": self.vocab_size,
             "merges": merge_data,
         }
-        destination.write_text(
-            json.dumps(data, indent=2) + "\n",
-            encoding="utf-8",
-        )
 
     @classmethod
     def load(cls, path: str | Path) -> Self:

@@ -1,8 +1,8 @@
 # Byte-level BPE tokenizer
 
 Phase 3A adds a deterministic byte-level byte-pair encoding tokenizer built
-from scratch. It is evaluated here as a tokenizer only; the ForgeLM Transformer
-has not yet been retrained with BPE tokens.
+from scratch. The compression experiment in this report trained on the complete
+Tiny Shakespeare corpus so it could measure whole-corpus token reduction.
 
 ## Why move beyond characters?
 
@@ -56,6 +56,19 @@ requested vocabulary size of 512.
 The generated tokenizer is saved under
 `artifacts/tokenizers/tiny_shakespeare_bpe.json`, which is intentionally
 ignored by Git.
+
+## Model-training leakage policy
+
+The Phase 3B model pipeline does not reuse this full-corpus experiment
+artifact. It first splits raw text contiguously into 90% training and 10%
+validation portions, then learns BPE merges from training text only. Training
+and validation text are encoded separately afterward. This prevents validation
+text from influencing the model tokenizer.
+
+Each model checkpoint records the train-only tokenizer's effective vocabulary
+size and a SHA-256 fingerprint of its canonical vocabulary and merge ordering.
+Loading can therefore reject a tokenizer whose token IDs or merge rules do not
+match the model.
 
 ## Limitations
 
