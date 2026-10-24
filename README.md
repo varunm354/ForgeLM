@@ -37,6 +37,15 @@ Phase 2D adds deterministic full-corpus evaluation so the best Bigram and
 Transformer checkpoints can be compared over every validation target exactly
 once.
 
+Phase 3A adds a deterministic byte-level BPE tokenizer trained from scratch.
+Its 256-byte base vocabulary supports arbitrary UTF-8 text without unknown
+tokens, while 256 learned merges reduce Tiny Shakespeare from 1,115,394
+character tokens to 691,315 BPE tokens. The Transformer has not yet been
+retrained with BPE.
+
+See the [BPE tokenizer report](reports/bpe_tokenizer.md) for the algorithm,
+compression results, and limitations.
+
 ## Baseline comparison
 
 These are the final sampled training-run metrics:
