@@ -16,3 +16,9 @@ uv run python scripts/download_tiny_shakespeare.py
 Source files are stored in `data/raw/`, and transformed datasets belong in
 `data/processed/`. Raw and processed data are local artifacts and are not
 committed to the repository.
+
+Phase 4A adds a separate streaming path for FineWeb-Edu pretraining data. It
+does not download the complete source into this directory; the preparation
+script writes packed binary shards and their manifest under `data/processed/`.
+See [`reports/scalable_data_pipeline.md`](../reports/scalable_data_pipeline.md)
+for the source, filtering, split, and reproducibility policies.

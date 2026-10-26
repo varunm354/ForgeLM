@@ -56,10 +56,19 @@ Phase 3C adds exact full-corpus bits-per-byte evaluation. Both Transformer
 checkpoints score the same raw validation text, with every target token's
 negative log-likelihood normalized by its exact represented UTF-8 bytes.
 
+Phase 4A adds the scalable pretraining-data path. It streams FineWeb-Edu or a
+local JSONL source, performs deterministic filtering, exact deduplication, and
+hash-based train/validation assignment, fits a Rust-backed byte-level BPE on
+training documents only, and writes checksummed `uint16` shards for
+memory-mapped batching. The pipeline has been validated with the synthetic
+offline fixture; the planned 500-million-token corpus has not been processed.
+
 See the [BPE tokenizer report](reports/bpe_tokenizer.md) for the algorithm,
 compression results, and limitations, and the
 [BPE Transformer report](reports/bpe_transformer_baseline.md) for training and
-normalized evaluation results.
+normalized evaluation results. The
+[scalable data pipeline report](reports/scalable_data_pipeline.md) documents
+the Phase 4A formats, reproducibility contract, and data-source considerations.
 
 ## Tokenizer-normalized Transformer comparison
 
@@ -105,4 +114,13 @@ Requires [uv](https://docs.astral.sh/uv/) and Python 3.12 or newer.
 uv sync
 uv run pytest
 uv run ruff check .
+```
+
+Run the Phase 4A offline smoke pipeline without network access:
+
+```bash
+uv run python scripts/prepare_pretraining_data.py \
+  --config configs/pretraining_data_smoke.yaml \
+  --local-jsonl tests/fixtures/pretraining_documents.jsonl \
+  --force --retrain-tokenizer
 ```
