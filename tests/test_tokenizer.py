@@ -38,6 +38,20 @@ def test_decode_rejects_invalid_token_id() -> None:
         tokenizer.decode([3])
 
 
+def test_token_byte_length_handles_ascii_and_unicode() -> None:
+    tokenizer = CharTokenizer("aé🌍")
+    token_ids = tokenizer.encode("aé🌍")
+
+    assert [tokenizer.token_byte_length(token_id) for token_id in token_ids] == [
+        1,
+        2,
+        4,
+    ]
+
+    with pytest.raises(ValueError, match="Invalid token ID"):
+        tokenizer.token_byte_length(tokenizer.vocab_size)
+
+
 def test_save_and_load_preserve_vocabulary(tmp_path: Path) -> None:
     tokenizer = CharTokenizer("b\na")
     path = tmp_path / "nested" / "tokenizer.json"

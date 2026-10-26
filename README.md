@@ -46,15 +46,30 @@ Phase 3B integrates BPE with the Transformer training pipeline. Raw text is
 split before tokenizer training, so merges are learned from the 90% training
 portion only and validation text cannot leak into the vocabulary. Tokenizer
 artifacts have stable SHA-256 fingerprints recorded in checkpoints for
-compatibility validation. The BPE pipeline has been smoke-tested, but its full
-5,000-step training run has not been completed.
+compatibility validation. The BPE Transformer's 5,000-step Tiny Shakespeare
+baseline run is complete.
 
 Character-level and BPE token-level perplexities are not directly comparable:
-their tokens represent different amounts of source text. A byte-normalized
-metric will be added separately.
+their tokens represent different amounts of source text.
+
+Phase 3C adds exact full-corpus bits-per-byte evaluation. Both Transformer
+checkpoints score the same raw validation text, with every target token's
+negative log-likelihood normalized by its exact represented UTF-8 bytes.
 
 See the [BPE tokenizer report](reports/bpe_tokenizer.md) for the algorithm,
-compression results, and limitations.
+compression results, and limitations, and the
+[BPE Transformer report](reports/bpe_transformer_baseline.md) for training and
+normalized evaluation results.
+
+## Tokenizer-normalized Transformer comparison
+
+| Model | Validation tokens | Total NLL | Scored bytes | Bits/byte |
+| --- | ---: | ---: | ---: | ---: |
+| Character Transformer | 111,540 | 193,360.159408863 | 111,539 | 2.501006312 |
+| BPE Transformer | 70,184 | 180,316.900768768 | 111,539 | 2.332299003 |
+
+On this exact benchmark, BPE improves bits per byte by **0.168707309**
+(**6.7456%**). Context resets at non-overlapping 128-token window boundaries.
 
 ## Baseline comparison
 

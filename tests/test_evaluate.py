@@ -7,7 +7,11 @@ import torch
 from torch.nn import functional as F
 
 from forgelm.models.bigram import BigramLanguageModel
-from forgelm.training.evaluate import estimate_loss, evaluate_full_corpus
+from forgelm.training.evaluate import (
+    estimate_loss,
+    evaluate_full_corpus,
+    evaluate_full_corpus_bytes,
+)
 
 
 @pytest.mark.parametrize("starts_in_training_mode", [True, False])
@@ -163,3 +167,188 @@ def test_full_corpus_evaluation_rejects_invalid_sizes(
             block_size=block_size,
             batch_size=batch_size,
         )
+
+
+def test_byte_evaluation_accumulates_exact_nll_and_bpb() -> None:
+    model = BigramLanguageModel(vocab_size=3)
+    with torch.no_grad():
+        model.token_embedding_table.weight.copy_(
+            torch.tensor(
+                [
+                    [2.0, 0.0, -1.0],
+                    [-1.0, 3.0, 0.0],
+                    [0.5, -0.5, 1.0],
+                ]
+            )
+        )
+    tokens = torch.tensor([0, 1, 2, 0, 1, 2, 0])
+    byte_lengths = {0: 1, 1: 2, 2: 3}
+
+    result = evaluate_full_corpus_bytes(
+        model,
+        tokens,
+        byte_lengths,
+        block_size=4,
+        batch_size=2,
+    )
+    expected_losses = F.cross_entropy(
+        model.token_embedding_table(tokens[:-1]),
+        tokens[1:],
+        reduction="none",
+    )
+    expected_total = expected_losses.double().sum().item()
+    expected_bytes = sum(byte_lengths[token_id] for token_id in tokens[1:].tolist())
+
+    assert result.total_negative_log_likelihood == pytest.approx(expected_total)
+    assert result.evaluated_target_tokens == len(tokens) - 1
+    assert result.evaluated_target_bytes == expected_bytes
+    assert result.mean_token_loss == pytest.approx(expected_total / (len(tokens) - 1))
+    assert result.token_perplexity == pytest.approx(
+        math.exp(result.mean_token_loss)
+    )
+    assert result.bits_per_byte == pytest.approx(
+        expected_total / (expected_bytes * math.log(2))
+    )
+
+
+def test_byte_evaluation_includes_partial_batch_and_window() -> None:
+    model = BigramLanguageModel(vocab_size=5)
+    batch_shapes: list[tuple[int, ...]] = []
+
+    def record_shape(
+        _model: torch.nn.Module,
+        inputs: tuple[torch.Tensor, ...],
+    ) -> None:
+        batch_shapes.append(tuple(inputs[0].shape))
+
+    handle = model.register_forward_pre_hook(record_shape)
+    try:
+        result = evaluate_full_corpus_bytes(
+            model,
+            torch.arange(14) % 5,
+            {token_id: 1 for token_id in range(5)},
+            block_size=4,
+            batch_size=2,
+        )
+    finally:
+        handle.remove()
+
+    assert batch_shapes == [(2, 4), (1, 4), (1, 1)]
+    assert result.evaluated_target_tokens == 13
+    assert result.evaluated_target_bytes == 13
+
+
+@pytest.mark.parametrize("invalid_length", [0, -1, True])
+def test_byte_evaluation_rejects_invalid_byte_lengths(
+    invalid_length: int,
+) -> None:
+    model = BigramLanguageModel(vocab_size=3)
+
+    with pytest.raises(ValueError, match="positive integer"):
+        evaluate_full_corpus_bytes(
+            model,
+            torch.tensor([0, 1, 2]),
+            {0: 1, 1: invalid_length, 2: 1},
+            block_size=2,
+            batch_size=1,
+        )
+
+
+def test_byte_evaluation_rejects_invalid_token_ids() -> None:
+    model = BigramLanguageModel(vocab_size=4)
+
+    with pytest.raises(ValueError, match="No byte length"):
+        evaluate_full_corpus_bytes(
+            model,
+            torch.tensor([0, 1, 3]),
+            {0: 1, 1: 1},
+            block_size=2,
+            batch_size=1,
+        )
+
+
+def test_byte_evaluation_rejects_insufficient_input() -> None:
+    model = BigramLanguageModel(vocab_size=3)
+
+    with pytest.raises(ValueError, match="at least two"):
+        evaluate_full_corpus_bytes(
+            model,
+            torch.tensor([0]),
+            {0: 1},
+            block_size=2,
+            batch_size=1,
+        )
+
+
+@pytest.mark.parametrize(("block_size", "batch_size"), [(0, 1), (1, 0)])
+def test_byte_evaluation_rejects_invalid_sizes(
+    block_size: int,
+    batch_size: int,
+) -> None:
+    model = BigramLanguageModel(vocab_size=3)
+
+    with pytest.raises(ValueError, match="positive integer"):
+        evaluate_full_corpus_bytes(
+            model,
+            torch.tensor([0, 1]),
+            {0: 1, 1: 1},
+            block_size=block_size,
+            batch_size=batch_size,
+        )
+
+
+@pytest.mark.parametrize("starts_in_training_mode", [True, False])
+def test_byte_evaluation_restores_model_mode(
+    starts_in_training_mode: bool,
+) -> None:
+    model = BigramLanguageModel(vocab_size=3)
+    model.train(starts_in_training_mode)
+
+    evaluate_full_corpus_bytes(
+        model,
+        torch.tensor([0, 1, 2, 0]),
+        {0: 1, 1: 1, 2: 1},
+        block_size=2,
+        batch_size=2,
+    )
+
+    assert model.training is starts_in_training_mode
+
+
+def test_different_token_perplexities_have_comparable_bpb() -> None:
+    character_model = BigramLanguageModel(vocab_size=3)
+    bpe_model = BigramLanguageModel(vocab_size=3)
+    with torch.no_grad():
+        character_model.token_embedding_table.weight.zero_()
+        bpe_model.token_embedding_table.weight.copy_(
+            torch.tensor(
+                [
+                    [-5.0, 5.0, -5.0],
+                    [-5.0, -5.0, 5.0],
+                    [0.0, 0.0, 0.0],
+                ]
+            )
+        )
+
+    character_result = evaluate_full_corpus_bytes(
+        character_model,
+        torch.tensor([0, 1, 2, 0]),
+        {0: 1, 1: 1, 2: 1},
+        block_size=3,
+        batch_size=1,
+    )
+    bpe_result = evaluate_full_corpus_bytes(
+        bpe_model,
+        torch.tensor([0, 1, 2]),
+        {0: 1, 1: 1, 2: 2},
+        block_size=2,
+        batch_size=1,
+    )
+
+    assert character_result.evaluated_target_bytes == 3
+    assert bpe_result.evaluated_target_bytes == 3
+    assert character_result.token_perplexity != pytest.approx(
+        bpe_result.token_perplexity
+    )
+    assert math.isfinite(character_result.bits_per_byte)
+    assert math.isfinite(bpe_result.bits_per_byte)

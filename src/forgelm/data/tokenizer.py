@@ -39,6 +39,16 @@ class CharTokenizer:
             characters.append(self._characters[token_id])
         return "".join(characters)
 
+    def token_byte_length(self, token_id: int) -> int:
+        """Return the UTF-8 byte length represented by a token ID."""
+        if (
+            not isinstance(token_id, int)
+            or isinstance(token_id, bool)
+            or not 0 <= token_id < self.vocab_size
+        ):
+            raise ValueError(f"Invalid token ID: {token_id!r}")
+        return len(self._characters[token_id].encode("utf-8"))
+
     def save(self, path: str | Path) -> None:
         """Save the vocabulary as JSON."""
         destination = Path(path)
