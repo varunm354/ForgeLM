@@ -80,10 +80,12 @@ The tiny offline CPU workflow passes interruption/resumption checks; no
 Phase 4D pins the FineWeb-Edu source revision and adds read-only production-data
 preflight, deterministic synthetic qualification shards, secret-safe CUDA
 environment diagnostics, and a hard-bounded full-model qualification runner.
-The offline CPU tests and diagnostic path pass locally. No real CUDA
-qualification has happened, no production tokenizer fingerprint has been
-pinned, no 500-million-token dataset has been processed, and no paid
-pretraining has begun.
+The offline CPU tests and diagnostic path pass locally. A real RTX 4090
+qualification attempt passed preflight, the full-model BF16 probe, five
+optimizer updates, validation, and checkpoint creation, but failed during RNG
+restoration; the correction is awaiting a GPU rerun. No production tokenizer
+fingerprint has been pinned, no 500-million-token dataset has been processed,
+and no paid pretraining has begun.
 
 See the [BPE tokenizer report](reports/bpe_tokenizer.md) for the algorithm,
 compression results, and limitations, and the

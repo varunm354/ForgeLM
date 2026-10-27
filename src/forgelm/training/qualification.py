@@ -89,6 +89,7 @@ def evaluate_acceptance_criteria(
     evidence: dict[str, Any],
     *,
     cpu_diagnostic: bool,
+    failure: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Separate mandatory CUDA acceptance checks from optional capabilities."""
     required = (
@@ -110,19 +111,35 @@ def evaluate_acceptance_criteria(
     criteria: list[dict[str, Any]] = []
     for key, label in required:
         value = evidence.get(key)
-        status = (
-            "deferred"
-            if cpu_diagnostic and value is not True
-            else "pass"
-            if value is True
-            else "fail"
-        )
+        if value is True:
+            status = "pass"
+            outcome = "passed"
+            reason = None
+        elif cpu_diagnostic:
+            status = "deferred"
+            outcome = "not_completed"
+            reason = "CUDA-only check deferred by CPU diagnostic mode."
+        elif value is False:
+            status = "fail"
+            outcome = "failed"
+            reason = "The check ran and did not pass."
+        else:
+            status = "fail"
+            outcome = "not_completed"
+            reason = (
+                "Not completed because qualification aborted with "
+                f"{failure['type']}: {failure['message']}"
+                if failure is not None
+                else "No passing evidence was recorded for this required check."
+            )
         criteria.append(
             {
                 "key": key,
                 "label": label,
                 "required": True,
                 "status": status,
+                "outcome": outcome,
+                "reason": reason,
             }
         )
     compile_requested = bool(evidence.get("compilation_requested"))
@@ -214,6 +231,7 @@ def run_qualification(
         report["acceptance_criteria"] = evaluate_acceptance_criteria(
             evidence,
             cpu_diagnostic=True,
+            failure=None,
         )
         report["passed"] = preflight["passed"]
         write_json_report(report_path, report)
@@ -226,6 +244,7 @@ def run_qualification(
         report["acceptance_criteria"] = evaluate_acceptance_criteria(
             evidence,
             cpu_diagnostic=False,
+            failure=report["failure"],
         )
         write_json_report(report_path, report)
         return report
@@ -237,6 +256,7 @@ def run_qualification(
         report["acceptance_criteria"] = evaluate_acceptance_criteria(
             evidence,
             cpu_diagnostic=False,
+            failure=report["failure"],
         )
         write_json_report(report_path, report)
         return report
@@ -249,11 +269,16 @@ def run_qualification(
                 "Bounded qualification currently requires one visible torchrun rank."
             )
         torch.cuda.reset_peak_memory_stats(context.device)
-        engine = PretrainingEngine(
-            config,
-            context,
-            resume_checkpoint=resume_checkpoint,
-        )
+        try:
+            engine = PretrainingEngine(
+                config,
+                context,
+                resume_checkpoint=resume_checkpoint,
+            )
+        except Exception:
+            if resume_checkpoint is not None:
+                evidence["checkpoint_save_load"] = False
+            raise
         evidence["full_model_loaded"] = (
             parameter_report(engine.model).total_parameters
             == PRODUCTION_PARAMETER_COUNT
@@ -277,23 +302,45 @@ def run_qualification(
             first_summary = engine.run(
                 maximum_optimizer_steps=intermediate_step
             )
+            evidence["optimizer_updates_completed"] = (
+                first_summary["optimizer_step"] >= 1
+            )
+            evidence["validation_completed"] = (
+                first_summary["validation_loss"] is not None
+            )
+            evidence["metrics_metadata_written"] = (
+                (output / config.metrics_filename).is_file()
+                and (output / config.metadata_filename).is_file()
+            )
             checkpoint = output / config.latest_checkpoint_name
             checkpoint_hash_before = sha256_file(checkpoint)
+            report["training"] = {
+                "first_phase": first_summary,
+                "checkpoint_sha256_before_resume": checkpoint_hash_before,
+            }
             del engine
             engine = None
             gc.collect()
             torch.cuda.empty_cache()
 
-            engine = PretrainingEngine(
-                config,
-                context,
-                resume_checkpoint=checkpoint,
-            )
+            try:
+                engine = PretrainingEngine(
+                    config,
+                    context,
+                    resume_checkpoint=checkpoint,
+                )
+            except Exception:
+                evidence["checkpoint_save_load"] = False
+                raise
             resume_start_step = engine.progress.optimizer_step
+            evidence["checkpoint_save_load"] = True
+            evidence["interrupted_resume"] = (
+                resume_start_step == intermediate_step
+            )
+            report["training"]["resume_start_step"] = resume_start_step
             final_summary = engine.run(
                 maximum_optimizer_steps=maximum_optimizer_steps
             )
-            evidence["interrupted_resume"] = resume_start_step == intermediate_step
             evidence["post_resume_step"] = (
                 final_summary["optimizer_step"] > resume_start_step
             )
@@ -301,8 +348,20 @@ def run_qualification(
             resume_start_step = engine.progress.optimizer_step
             checkpoint_hash_before = sha256_file(resume_checkpoint)
             first_summary = None
+            evidence["checkpoint_save_load"] = True
+            report["training"] = {
+                "first_phase": None,
+                "resume_start_step": resume_start_step,
+                "checkpoint_sha256_before_resume": checkpoint_hash_before,
+            }
             final_summary = engine.run(
                 maximum_optimizer_steps=maximum_optimizer_steps
+            )
+            evidence["optimizer_updates_completed"] = (
+                final_summary["optimizer_step"] >= 1
+            )
+            evidence["validation_completed"] = (
+                final_summary["validation_loss"] is not None
             )
             evidence["interrupted_resume"] = True
             evidence["post_resume_step"] = (
@@ -360,6 +419,20 @@ def run_qualification(
             "message": str(error),
         }
     finally:
+        try:
+            peak_allocated = torch.cuda.max_memory_allocated(context.device)
+            peak_reserved = torch.cuda.max_memory_reserved(context.device)
+            evidence["peak_vram_recorded"] = (
+                peak_allocated > 0 and peak_reserved > 0
+            )
+            if report["training"] is None:
+                report["training"] = {}
+            report["training"].update(
+                peak_allocated_vram_bytes=peak_allocated,
+                peak_reserved_vram_bytes=peak_reserved,
+            )
+        except (RuntimeError, ValueError):
+            pass
         if engine is not None:
             del engine
         context.shutdown()
@@ -367,6 +440,7 @@ def run_qualification(
     report["acceptance_criteria"] = evaluate_acceptance_criteria(
         evidence,
         cpu_diagnostic=False,
+        failure=report["failure"],
     )
     report["passed"] = (
         report["failure"] is None

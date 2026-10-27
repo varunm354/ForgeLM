@@ -12,6 +12,11 @@ import yaml
 
 from forgelm.data.token_shards import BinaryTokenShardWriter
 from forgelm.models.gpt import GPTConfig
+from forgelm.training.pretrain_checkpoint import (
+    capture_rank_state,
+    normalize_rng_state,
+    restore_rank_state,
+)
 from forgelm.training.pretrain_config import PretrainConfig
 from forgelm.training.pretrain_engine import PretrainingEngine
 from forgelm.training.pretrain_runtime import initialize_distributed
@@ -290,6 +295,129 @@ def test_checkpoint_metrics_metadata_and_weights_only_loading(
         assert torch.equal(expected, actual)
 
 
+def test_weights_only_checkpoint_does_not_require_training_or_rng_state(
+    tmp_path: Path,
+) -> None:
+    model_path, manifest_path = _make_assets(tmp_path)
+    config = _config(model_path, manifest_path, tmp_path / "source")
+    engine = _engine(config)
+    engine.run(maximum_optimizer_steps=1)
+    full_checkpoint = torch.load(
+        config.output_directory / "latest.pt",
+        map_location="cpu",
+        weights_only=False,
+    )
+    weights_path = tmp_path / "minimal-weights.pt"
+    torch.save(
+        {
+            name: full_checkpoint[name]
+            for name in ("format", "version", "model_state", "model_config")
+        },
+        weights_path,
+    )
+
+    restored = _engine(
+        _config(model_path, manifest_path, tmp_path / "restored"),
+        weights_only_checkpoint=weights_path,
+    )
+
+    assert restored.progress.optimizer_step == 0
+    for expected, actual in zip(
+        engine.model.parameters(),
+        restored.model.parameters(),
+        strict=True,
+    ):
+        assert torch.equal(expected, actual)
+
+
+def test_rng_state_normalization_accepts_bytes_and_lossless_integer_conversion(
+) -> None:
+    byte_state = torch.get_rng_state()
+    converted_source = torch.empty(
+        byte_state.numel() * 2,
+        dtype=torch.int16,
+    )
+    converted_source[::2] = byte_state.to(torch.int16)
+    noncontiguous_state = converted_source[::2]
+
+    unchanged = normalize_rng_state(
+        byte_state,
+        field_name="cpu_rng",
+    )
+    converted = normalize_rng_state(
+        noncontiguous_state,
+        field_name="cuda_rng",
+    )
+
+    assert unchanged.device.type == converted.device.type == "cpu"
+    assert unchanged.dtype == converted.dtype == torch.uint8
+    assert unchanged.is_contiguous()
+    assert converted.is_contiguous()
+    assert torch.equal(unchanged, byte_state)
+    assert torch.equal(converted, byte_state)
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        ([1, 2, 3], "must be a torch.Tensor"),
+        (torch.tensor([1.0]), "integer byte values"),
+        (torch.tensor([[1]], dtype=torch.uint8), "one-dimensional"),
+        (torch.tensor([256], dtype=torch.int16), "between 0 and 255"),
+    ],
+)
+def test_rng_state_normalization_rejects_malformed_values(
+    value: object,
+    message: str,
+) -> None:
+    with pytest.raises((TypeError, ValueError), match=message):
+        normalize_rng_state(value, field_name="bad_rng")
+
+
+def test_rank_state_restoration_normalizes_cuda_and_sampler_rng_tensors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model_path, manifest_path = _make_assets(tmp_path)
+    engine = _engine(_config(model_path, manifest_path, tmp_path / "normalize"))
+    rank_state = capture_rank_state(
+        engine.training_sampler,
+        engine.validation_sampler,
+    )
+    byte_state = rank_state["torch_cpu_rng_state"]
+    rank_state["torch_cpu_rng_state"] = byte_state.to(torch.int16)
+    rank_state["cuda_rng_states"] = [byte_state.to(torch.int16)]
+    rank_state["training_sampler_state"]["generator_state"] = (
+        rank_state["training_sampler_state"]["generator_state"].to(torch.int16)
+    )
+    rank_state["validation_sampler_state"]["generator_state"] = (
+        rank_state["validation_sampler_state"]["generator_state"].to(torch.int16)
+    )
+    restored_cuda_states: list[torch.Tensor] = []
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "device_count", lambda: 1)
+    monkeypatch.setattr(
+        torch.cuda,
+        "set_rng_state_all",
+        lambda states: restored_cuda_states.extend(states),
+    )
+
+    restore_rank_state(
+        rank_state,
+        engine.training_sampler,
+        engine.validation_sampler,
+    )
+
+    assert len(restored_cuda_states) == 1
+    assert restored_cuda_states[0].device.type == "cpu"
+    assert restored_cuda_states[0].dtype == torch.uint8
+    assert restored_cuda_states[0].is_contiguous()
+    for sampler in (engine.training_sampler, engine.validation_sampler):
+        generator_state = sampler.generator.get_state()
+        assert generator_state.device.type == "cpu"
+        assert generator_state.dtype == torch.uint8
+
+
 def test_exact_resume_restores_all_cpu_rng_and_sampler_states(
     tmp_path: Path,
 ) -> None:
@@ -435,6 +563,10 @@ def test_exact_interrupted_resume_matches_uninterrupted_training(
         reference.optimizer.state_dict(),
         resumed.optimizer.state_dict(),
     )
+    for parameter, optimizer_state in resumed.optimizer.state.items():
+        for value in optimizer_state.values():
+            if isinstance(value, torch.Tensor):
+                assert value.device == parameter.device
 
 
 def _assert_nested_equal(expected: Any, actual: Any) -> None:

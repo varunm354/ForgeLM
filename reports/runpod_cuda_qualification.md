@@ -1,8 +1,9 @@
 # RunPod CUDA qualification guide
 
-This is an operational template for a future bounded qualification. No RunPod
-Pod, NVIDIA GPU model, CUDA run, or paid training run has been tested or
-started by Phase 4D.
+This guide records the bounded qualification procedure and its current status.
+An RTX 4090 RunPod qualification has been attempted, but Phase 4D GPU
+qualification has not passed. No production-data or 500-million-token training
+run has started.
 
 ## Safety boundary
 
@@ -112,6 +113,45 @@ checkpoint, reconstructs the engine from that checkpoint, and completes at
 least one post-resume update. It exits nonzero for CUDA/preflight failure,
 non-finite values, OOM, failed resume, corrupt artifacts, or unmet mandatory
 acceptance criteria.
+
+## Checkpoint-resume troubleshooting and pending rerun
+
+The first real run used an RTX 4090, PyTorch `2.14.1+cu130`, CUDA 13.0, BF16,
+1,024-token sequences, two accumulation micro-steps, the full
+49,295,872-parameter model, and eager execution. CUDA preflight and the
+full-model forward/backward probe passed with finite loss and gradients. The
+run completed five optimizer steps, ten micro-steps, 10,240 tokens, validation,
+and checkpoint creation, then aborted while reconstructing the engine with:
+
+```text
+TypeError: RNG state must be a torch.ByteTensor
+```
+
+The checkpoint loader had applied `map_location=cuda` to the entire checkpoint.
+That moved saved CUDA RNG-state ByteTensors, which PyTorch stores and restores
+from CPU, onto CUDA before `torch.cuda.set_rng_state_all`. Checkpoints are now
+staged on CPU; CPU, CUDA, and sampler RNG tensors are validated and normalized
+to contiguous CPU ByteTensors before restoration. Model parameters remain on
+the selected training device, and AdamW uses its device-aware state loader.
+
+After pulling the correction, rerun the bounded qualification from a clean
+qualification output directory:
+
+```bash
+cd "$FORGELM_ROOT"
+git pull --ff-only origin main
+uv run python scripts/qualify_cuda_training.py \
+  --config configs/pretrain_gpt_cuda_qualification.yaml \
+  --manifest "$FORGELM_QUAL_DATA/manifest.json" \
+  --output-dir "$FORGELM_QUAL_OUTPUT" \
+  --max-optimizer-steps 20 \
+  --no-compile \
+  --force
+```
+
+GPU qualification remains pending until this rerun passes every required
+acceptance criterion. The partial run is diagnostic evidence only and must not
+be reported as a Phase 4D GPU qualification pass.
 
 ## Optionally qualify compilation
 
