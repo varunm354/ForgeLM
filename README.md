@@ -70,6 +70,13 @@ weights. The default configuration has exactly 49,295,872 trainable parameters
 and a 1,024-token context. CPU architecture checks are complete; the model has
 not been pretrained.
 
+Phase 4C connects memory-mapped shards to that GPT with intentional AdamW
+grouping, warmup/cosine scheduling, gradient accumulation and clipping,
+device-aware mixed precision, fixed validation, atomic exact-resume
+checkpoints, JSONL metrics, optional compilation, and torchrun-compatible DDP.
+The tiny offline CPU workflow passes interruption/resumption checks; no
+500-million-token pretraining run has started.
+
 See the [BPE tokenizer report](reports/bpe_tokenizer.md) for the algorithm,
 compression results, and limitations, and the
 [BPE Transformer report](reports/bpe_transformer_baseline.md) for training and
@@ -78,7 +85,10 @@ normalized evaluation results. The
 the Phase 4A formats, reproducibility contract, and data-source considerations.
 The [GPT 50M architecture report](reports/gpt_50m_architecture.md) documents
 the production model design, tensor shapes, exact parameter count, and
-remaining cloud-training work.
+remaining cloud-training work. The
+[cloud pretraining engine report](reports/cloud_pretraining_engine.md)
+documents batching, optimization, validation, exact checkpoints, DDP, and the
+offline smoke workflow.
 
 ## Tokenizer-normalized Transformer comparison
 
@@ -139,4 +149,18 @@ Inspect the Phase 4B model and run its bounded CPU smoke checks:
 
 ```bash
 uv run python scripts/inspect_gpt_model.py --config configs/gpt_50m.yaml
+```
+
+Run two Phase 4C CPU smoke updates, then resume for the third:
+
+```bash
+uv run python scripts/pretrain_gpt.py \
+  --config configs/pretrain_gpt_smoke.yaml \
+  --device cpu --max-optimizer-steps 2
+
+uv run python scripts/pretrain_gpt.py \
+  --config configs/pretrain_gpt_smoke.yaml \
+  --device cpu \
+  --resume outputs/pretrain_gpt_smoke/latest.pt \
+  --max-optimizer-steps 3
 ```

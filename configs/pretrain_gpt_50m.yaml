@@ -1,0 +1,30 @@
+model_config_path: configs/gpt_50m.yaml
+manifest_path: data/processed/fineweb_edu_500m/manifest.json
+# Fill this with the pinned Phase 4A tokenizer fingerprint before the paid run.
+expected_tokenizer_fingerprint: null
+seed: 1337
+micro_batch_size: 8
+sequence_length: 1024
+gradient_accumulation_steps: 16
+target_training_tokens: 500000000
+learning_rate: 0.0006
+minimum_learning_rate: 0.00006
+warmup_steps: 200
+weight_decay: 0.1
+betas: [0.9, 0.95]
+epsilon: 0.00000001
+gradient_clipping: 1.0
+logging_interval: 10
+validation_interval: 100
+validation_batches: 50
+checkpoint_interval: 250
+precision: auto
+torch_compile: false
+compile_allow_fallback: false
+output_directory: outputs/pretrain_gpt_50m
+latest_checkpoint_name: latest.pt
+best_checkpoint_name: best.pt
+metrics_filename: metrics.jsonl
+metadata_filename: run_metadata.json
+verify_checksums: true
+fixed_validation_batches: true
