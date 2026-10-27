@@ -1,0 +1,30 @@
+model_config_path: configs/gpt_50m.yaml
+manifest_path: data/processed/cuda_qualification/manifest.json
+expected_tokenizer_fingerprint: b039daa5fdb33d71a6edd1537953d7345411a51987542585e84fd735cdeb6c6d
+seed: 1337
+micro_batch_size: 1
+sequence_length: 1024
+gradient_accumulation_steps: 2
+# 20 optimizer steps × 1 micro-batch × 1024 tokens × 2 accumulation steps.
+target_training_tokens: 40960
+learning_rate: 0.0006
+minimum_learning_rate: 0.00006
+warmup_steps: 2
+weight_decay: 0.1
+betas: [0.9, 0.95]
+epsilon: 0.00000001
+gradient_clipping: 1.0
+logging_interval: 1
+validation_interval: 5
+validation_batches: 2
+checkpoint_interval: 5
+precision: auto
+torch_compile: false
+compile_allow_fallback: false
+output_directory: outputs/cuda_qualification
+latest_checkpoint_name: latest.pt
+best_checkpoint_name: best.pt
+metrics_filename: metrics.jsonl
+metadata_filename: run_metadata.json
+verify_checksums: true
+fixed_validation_batches: true

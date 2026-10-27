@@ -373,6 +373,33 @@ def test_interrupt_request_finishes_boundary_and_saves_interrupt_checkpoint(
     assert (config.output_directory / "step_00000001.pt").is_file()
 
 
+def test_non_finite_loss_refuses_optimizer_update(tmp_path: Path) -> None:
+    model_path, manifest_path = _make_assets(tmp_path)
+    engine = _engine(_config(model_path, manifest_path, tmp_path / "nonfinite"))
+
+    class NonFiniteModel(torch.nn.Module):
+        def forward(
+            self,
+            inputs: torch.Tensor,
+            targets: torch.Tensor,
+        ) -> tuple[torch.Tensor, torch.Tensor]:
+            logits = torch.empty(
+                (*inputs.shape, 1),
+                device=inputs.device,
+            )
+            loss = torch.tensor(
+                float("nan"),
+                device=inputs.device,
+                requires_grad=True,
+            )
+            return logits, loss
+
+    engine.execution_model = NonFiniteModel()
+    with pytest.raises(FloatingPointError, match="Non-finite training loss"):
+        engine.train_one_optimizer_step()
+    assert engine.progress.optimizer_step == 0
+
+
 def test_exact_interrupted_resume_matches_uninterrupted_training(
     tmp_path: Path,
 ) -> None:

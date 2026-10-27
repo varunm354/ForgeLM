@@ -16,9 +16,10 @@ Repeatedly training on it also makes overfitting much more likely.
 The planned source is
 [`HuggingFaceFW/fineweb-edu`](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu),
 using its `sample-10BT` configuration. FineWeb-Edu is a filtered educational
-subset of web data. The default configuration uses revision `main` for
-development convenience, but a final run must replace it with a specific
-immutable dataset commit so later upstream changes cannot alter the corpus.
+subset of web data. Phase 4D pins immutable revision
+`924804708136147342bc2390cd29abb1edaf0c67` so later upstream changes cannot
+alter the configured source. The read-only preflight never falls back to
+`main` if that revision cannot be opened.
 
 ## Streaming and deterministic document processing
 

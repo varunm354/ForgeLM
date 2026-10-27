@@ -2,12 +2,14 @@
 
 import argparse
 import itertools
+import json
 import shutil
 import time
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
+from forgelm.data.preflight import run_data_preflight
 from forgelm.data.pretraining_config import PretrainingDataConfig
 from forgelm.data.scalable_tokenizer import ScalableByteLevelTokenizer
 from forgelm.data.streaming_corpus import (
@@ -50,6 +52,22 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="replace existing output and stale staging directories",
     )
+    parser.add_argument(
+        "--preflight-only",
+        action="store_true",
+        help="validate configuration, storage, imports, and a bounded source sample",
+    )
+    parser.add_argument(
+        "--preflight-documents",
+        type=_positive_integer,
+        default=2,
+        help="maximum source records requested by read-only preflight",
+    )
+    parser.add_argument(
+        "--skip-connectivity-check",
+        action="store_true",
+        help="skip network and remote source checks during preflight",
+    )
     return parser.parse_args()
 
 
@@ -85,6 +103,17 @@ def main() -> int:
         local_jsonl=args.local_jsonl,
         maximum_documents=args.maximum_documents,
     )
+    if args.preflight_only:
+        report = run_data_preflight(
+            config,
+            source_factory=source_factory,
+            local_source=args.local_jsonl is not None,
+            force=args.force,
+            check_connectivity=not args.skip_connectivity_check,
+            document_limit=args.preflight_documents,
+        )
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0 if report["passed"] else 2
     _prepare_destination(config.output_directory, force=args.force)
 
     if config.dataset_revision == "main" and args.local_jsonl is None:
@@ -206,6 +235,7 @@ def _make_source_factory(
         "dataset_config": config.dataset_config,
         "dataset_split": config.dataset_split,
         "dataset_revision": config.dataset_revision,
+        "streaming": config.streaming,
         "text_field": config.text_field,
         "local_path": local_path,
         "maximum_documents": maximum_documents,
@@ -271,6 +301,7 @@ def _prepare_destination(output: Path, *, force: bool) -> None:
 def _creation_configuration(config: PretrainingDataConfig) -> dict[str, Any]:
     return {
         "seed": config.seed,
+        "streaming": config.streaming,
         "validation_fraction": config.validation_fraction,
         "minimum_characters": config.minimum_characters,
         "maximum_characters": config.maximum_characters,

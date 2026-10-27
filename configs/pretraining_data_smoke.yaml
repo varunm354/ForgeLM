@@ -2,6 +2,7 @@ dataset_name: local/synthetic-pretraining-fixture
 dataset_config: offline
 dataset_split: train
 dataset_revision: fixture-v1
+streaming: true
 text_field: text
 seed: 1337
 validation_fraction: 0.25

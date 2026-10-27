@@ -77,6 +77,14 @@ checkpoints, JSONL metrics, optional compilation, and torchrun-compatible DDP.
 The tiny offline CPU workflow passes interruption/resumption checks; no
 500-million-token pretraining run has started.
 
+Phase 4D pins the FineWeb-Edu source revision and adds read-only production-data
+preflight, deterministic synthetic qualification shards, secret-safe CUDA
+environment diagnostics, and a hard-bounded full-model qualification runner.
+The offline CPU tests and diagnostic path pass locally. No real CUDA
+qualification has happened, no production tokenizer fingerprint has been
+pinned, no 500-million-token dataset has been processed, and no paid
+pretraining has begun.
+
 See the [BPE tokenizer report](reports/bpe_tokenizer.md) for the algorithm,
 compression results, and limitations, and the
 [BPE Transformer report](reports/bpe_transformer_baseline.md) for training and
@@ -88,7 +96,11 @@ the production model design, tensor shapes, exact parameter count, and
 remaining cloud-training work. The
 [cloud pretraining engine report](reports/cloud_pretraining_engine.md)
 documents batching, optimization, validation, exact checkpoints, DDP, and the
-offline smoke workflow.
+offline smoke workflow. The
+[RunPod CUDA qualification guide](reports/runpod_cuda_qualification.md)
+documents the future bounded GPU procedure, and the
+[production pretraining plan](reports/production_pretraining_plan.md) defines
+the approval gates before processing production data or starting paid compute.
 
 ## Tokenizer-normalized Transformer comparison
 
@@ -163,4 +175,28 @@ uv run python scripts/pretrain_gpt.py \
   --device cpu \
   --resume outputs/pretrain_gpt_smoke/latest.pt \
   --max-optimizer-steps 3
+```
+
+Create the small synthetic CUDA-qualification fixture and run local,
+non-training diagnostics:
+
+```bash
+uv run python scripts/create_cuda_qualification_data.py --force
+
+uv run python scripts/cloud_preflight.py \
+  --config configs/pretrain_gpt_cuda_qualification.yaml \
+  --cpu-diagnostic
+
+uv run python scripts/qualify_cuda_training.py \
+  --config configs/pretrain_gpt_cuda_qualification.yaml \
+  --cpu-diagnostic --force
+```
+
+Inspect the production preparation plan without creating a tokenizer or token
+shards:
+
+```bash
+uv run python scripts/prepare_pretraining_data.py \
+  --config configs/pretraining_data.yaml \
+  --preflight-only
 ```

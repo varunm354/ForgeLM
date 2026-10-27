@@ -193,8 +193,9 @@ These are planned commands, not completed runs.
 
 ## Remaining work before paid pretraining
 
-The final FineWeb-Edu revision and tokenizer fingerprint must be pinned and the
-500-million-token corpus prepared. CUDA BF16/FP16, fused AdamW,
+The FineWeb-Edu revision is pinned by Phase 4D. The production tokenizer
+fingerprint must still be pinned and the 500-million-token corpus prepared.
+CUDA BF16/FP16, fused AdamW,
 `torch.compile`, NCCL DDP, cloud filesystem throughput, interruption delivery,
 and checkpoint upload/recovery need a short unpaid or tightly bounded cloud
 qualification run. Batch size, accumulation, compile behavior, validation

@@ -144,7 +144,8 @@ memory-mapped shard iteration, resumable model/optimizer checkpoints,
 validation and metric reporting, accelerator throughput profiling, and
 failure-safe cloud artifact storage.
 
-The final FineWeb-Edu revision and tokenizer artifact must also be pinned and
-the planned 500-million-token Phase 4A corpus must be prepared. Later inference
-work can add a KV cache and serving-specific generation controls without
-changing this architecture's training semantics.
+Phase 4D now pins the FineWeb-Edu revision, but the production tokenizer
+artifact and fingerprint remain unbuilt and the planned 500-million-token
+Phase 4A corpus remains unprocessed. Later inference work can add a KV cache
+and serving-specific generation controls without changing this architecture's
+training semantics.

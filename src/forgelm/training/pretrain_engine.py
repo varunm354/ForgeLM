@@ -289,6 +289,10 @@ class PretrainingEngine:
                 _, loss = self.execution_model(inputs, targets)
                 if loss is None:
                     raise RuntimeError("GPT did not return a training loss.")
+                if not torch.isfinite(loss).item():
+                    raise FloatingPointError(
+                        "Non-finite training loss; refusing optimizer update."
+                    )
                 scaled_loss = loss / self.config.gradient_accumulation_steps
             raw_loss_total += float(loss.detach())
             if self.scaler is None:
@@ -302,10 +306,15 @@ class PretrainingEngine:
 
         if self.scaler is not None:
             self.scaler.unscale_(self.optimizer)
+        self._validate_finite_gradients()
         gradient_norm = torch.nn.utils.clip_grad_norm_(
             self.model.parameters(),
             self.config.gradient_clipping,
         )
+        if not torch.isfinite(gradient_norm).item():
+            raise FloatingPointError(
+                "Non-finite gradient norm; refusing optimizer update."
+            )
         if self.scaler is None:
             self.optimizer.step()
         else:
@@ -342,6 +351,10 @@ class PretrainingEngine:
                         _, loss = self.execution_model(inputs, targets)
                     if loss is None:
                         raise RuntimeError("GPT did not return validation loss.")
+                    if not torch.isfinite(loss).item():
+                        raise FloatingPointError(
+                            "Non-finite validation loss."
+                        )
                     total_negative_log_likelihood += (
                         float(loss) * targets.numel()
                     )
@@ -532,6 +545,26 @@ class PretrainingEngine:
     def _rank_zero_print(self, message: str) -> None:
         if self.distributed.is_rank_zero:
             print(message)
+
+    def _validate_finite_gradients(self) -> None:
+        missing: list[str] = []
+        non_finite: list[str] = []
+        for name, parameter in self.model.named_parameters():
+            if not parameter.requires_grad:
+                continue
+            if parameter.grad is None:
+                missing.append(name)
+            elif not torch.isfinite(parameter.grad).all().item():
+                non_finite.append(name)
+        if missing:
+            raise FloatingPointError(
+                "Trainable parameters are missing gradients: "
+                + ", ".join(missing[:5])
+            )
+        if non_finite:
+            raise FloatingPointError(
+                "Non-finite gradients detected: " + ", ".join(non_finite[:5])
+            )
 
     @staticmethod
     def _seed_process(seed: int) -> None:

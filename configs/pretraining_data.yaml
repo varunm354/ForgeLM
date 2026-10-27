@@ -1,8 +1,8 @@
-# Pin dataset_revision to an immutable FineWeb-Edu commit for the final run.
 dataset_name: HuggingFaceFW/fineweb-edu
 dataset_config: sample-10BT
 dataset_split: train
-dataset_revision: main
+dataset_revision: 924804708136147342bc2390cd29abb1edaf0c67
+streaming: true
 text_field: text
 seed: 1337
 validation_fraction: 0.01
