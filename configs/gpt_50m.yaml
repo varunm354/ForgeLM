@@ -1,0 +1,14 @@
+vocab_size: 16384
+block_size: 1024
+embedding_dim: 512
+num_layers: 12
+num_heads: 8
+head_dim: 64
+feed_forward_hidden_dim: 1536
+dropout: 0.0
+linear_bias: false
+rope_base: 10000.0
+rope_max_sequence_length: 1024
+rms_norm_epsilon: 0.00001
+tie_embeddings: true
+initialization_std: 0.02

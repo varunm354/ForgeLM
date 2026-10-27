@@ -63,12 +63,22 @@ training documents only, and writes checksummed `uint16` shards for
 memory-mapped batching. The pipeline has been validated with the synthetic
 offline fixture; the planned 500-million-token corpus has not been processed.
 
+Phase 4B adds a separate production-oriented decoder-only GPT architecture
+with RMSNorm, RoPE, fused QKV projections, PyTorch scaled dot-product
+attention, SwiGLU, pre-normalized residual blocks, and tied token/output
+weights. The default configuration has exactly 49,295,872 trainable parameters
+and a 1,024-token context. CPU architecture checks are complete; the model has
+not been pretrained.
+
 See the [BPE tokenizer report](reports/bpe_tokenizer.md) for the algorithm,
 compression results, and limitations, and the
 [BPE Transformer report](reports/bpe_transformer_baseline.md) for training and
 normalized evaluation results. The
 [scalable data pipeline report](reports/scalable_data_pipeline.md) documents
 the Phase 4A formats, reproducibility contract, and data-source considerations.
+The [GPT 50M architecture report](reports/gpt_50m_architecture.md) documents
+the production model design, tensor shapes, exact parameter count, and
+remaining cloud-training work.
 
 ## Tokenizer-normalized Transformer comparison
 
@@ -123,4 +133,10 @@ uv run python scripts/prepare_pretraining_data.py \
   --config configs/pretraining_data_smoke.yaml \
   --local-jsonl tests/fixtures/pretraining_documents.jsonl \
   --force --retrain-tokenizer
+```
+
+Inspect the Phase 4B model and run its bounded CPU smoke checks:
+
+```bash
+uv run python scripts/inspect_gpt_model.py --config configs/gpt_50m.yaml
 ```
