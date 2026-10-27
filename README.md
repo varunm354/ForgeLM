@@ -80,12 +80,15 @@ The tiny offline CPU workflow passes interruption/resumption checks; no
 Phase 4D pins the FineWeb-Edu source revision and adds read-only production-data
 preflight, deterministic synthetic qualification shards, secret-safe CUDA
 environment diagnostics, and a hard-bounded full-model qualification runner.
-The offline CPU tests and diagnostic path pass locally. A real RTX 4090
-qualification attempt passed preflight, the full-model BF16 probe, five
-optimizer updates, validation, and checkpoint creation, but failed during RNG
-restoration; the correction is awaiting a GPU rerun. No production tokenizer
-fingerprint has been pinned, no 500-million-token dataset has been processed,
-and no paid pretraining has begun.
+Phase 4D's bounded single-GPU CUDA qualification now passes on a real RTX 4090
+in both eager and compiled BF16 modes. The full model completed 20 optimizer
+steps, exact checkpoint resumption from step 5, validation, and post-resume
+training; optional `torch.compile` qualification also passed and is the current
+production candidate, with eager mode retained as the validated fallback.
+These runs used synthetic tokens, so their losses do not measure language
+quality. The model has not been pretrained: the production tokenizer and
+fingerprint, 500-million-token FineWeb-Edu shards, short real-data gate,
+multi-GPU qualification, and paid pretraining remain incomplete.
 
 See the [BPE tokenizer report](reports/bpe_tokenizer.md) for the algorithm,
 compression results, and limitations, and the
@@ -100,7 +103,7 @@ remaining cloud-training work. The
 documents batching, optimization, validation, exact checkpoints, DDP, and the
 offline smoke workflow. The
 [RunPod CUDA qualification guide](reports/runpod_cuda_qualification.md)
-documents the future bounded GPU procedure, and the
+records the passing bounded GPU results and reproducible procedure, and the
 [production pretraining plan](reports/production_pretraining_plan.md) defines
 the approval gates before processing production data or starting paid compute.
 

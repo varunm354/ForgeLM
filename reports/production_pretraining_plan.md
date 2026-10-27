@@ -1,36 +1,51 @@
 # Production pretraining launch plan
 
 This is a gated plan, not a record of executed cloud work. Phase 4D has not
-trained a production tokenizer, processed the 500-million-token corpus,
-qualified CUDA, or started paid pretraining.
+trained a production tokenizer, processed the 500-million-token corpus, run on
+real FineWeb-Edu shards, or started paid pretraining. It has completed bounded
+single-GPU CUDA qualification on synthetic data.
 
-## Gates
+## Gate status
 
-1. **All local tests pass.** Run the complete offline test and lint suite from
-   the locked environment.
-2. **CUDA preflight passes.** Preserve the JSON report from a single-GPU
-   RunPod host.
-3. **Bounded full-model qualification passes.** Require the 49,295,872
-   parameter model, 1,024-token sequences, mixed precision, finite loss and
-   gradients, validation, checkpoints, memory, and throughput reporting.
-4. **Checkpoint resumption passes.** Require an intermediate exact resume and
-   at least one successful post-resume optimizer update.
-5. **Tokenizer is trained only on production training documents.** Do not use
-   validation documents or the synthetic qualification fixture.
-6. **Tokenizer fingerprint is pinned.** Record the artifact SHA-256 identity
-   in the production training configuration and preserve the tokenizer.
-7. **500M-token shards and checksums are created.** Validate every shard and
-   preserve the manifest before training.
-8. **A short FineWeb training run passes.** Use production shards with an
+1. **Passed — all local tests and lint checks.** The complete offline suite
+   passes in the locked environment at Phase 4D closeout.
+2. **Passed — CUDA preflight.** The preserved single-GPU RunPod evidence
+   records an RTX 4090, PyTorch `2.14.1+cu130`, CUDA 13.0, cuDNN 92400, one
+   visible GPU, and BF16 support.
+3. **Passed — bounded full-model qualification.** The 49,295,872-parameter
+   model completed 20 optimizer steps and 40 micro-steps at sequence length
+   1,024 in both eager and compiled BF16 modes. Finite loss and gradients,
+   validation, checkpoints, memory, throughput, artifacts, and metadata all
+   passed their required acceptance checks.
+4. **Passed — exact checkpoint resumption.** Both CUDA runs saved at optimizer
+   step 5, reconstructed the engine, and completed through step 20 with a
+   post-resume optimizer update. The earlier CUDA RNG device-restoration defect
+   was corrected by commit `658e350` before these passing runs.
+5. **Pending — production tokenizer training.** Train only on production
+   training documents; do not use validation documents or the synthetic
+   qualification fixture.
+6. **Pending — production tokenizer fingerprint.** Record the artifact SHA-256
+   identity in the production training configuration and preserve the
+   tokenizer.
+7. **Pending — 500M-token shards and checksums.** Validate every FineWeb-Edu
+   shard and preserve the manifest before training.
+8. **Pending — short FineWeb-Edu training run.** Use production shards with an
    explicit small step cap and inspect numerical behavior, throughput,
    validation, storage, and resume.
-9. **A human explicitly approves the full paid run.** No script may infer
-   approval from earlier gates.
-10. **Final training and evaluation run.** Preserve all configurations,
+9. **Pending — explicit human approval for the full paid run.** No script may
+   infer approval from earlier gates.
+10. **Pending — final training and evaluation.** Preserve all configurations,
     identities, metrics, checkpoints, and evaluation outputs.
 
 Failure at any gate stops progression. A later gate does not waive an earlier
-one.
+one. Progression is currently blocked at Gate 5.
+
+The compiled single-GPU path is the current production candidate based on the
+bounded qualification's higher throughput and lower latency and allocated
+VRAM. Eager mode is the validated fallback. This choice must be rechecked
+during the short real-data gate; synthetic qualification losses are not
+model-quality evidence. Multi-GPU/NCCL qualification remains incomplete and
+must be performed before any multi-GPU launch.
 
 ## Pinned data contract
 
@@ -124,12 +139,13 @@ uv run python scripts/pretrain_gpt.py \
 For any actual launch, first pin
 `expected_tokenizer_fingerprint`, use persistent absolute paths, review the
 effective batch and calculated optimizer steps, and capture the Git commit.
-This plan intentionally contains no runtime or cost estimate because no target
-GPU has been measured.
+The bounded RTX 4090 measurements are insufficient for a full-run runtime or
+cost estimate because they exclude production data loading, long-run behavior,
+checkpoint retention, and provider variability.
 
 ## Cost controls and manual stop conditions
 
-- Start with one GPU and the bounded qualification.
+- Use the qualified single-GPU path for the short real-data gate.
 - Set provider spending alerts and inspect the provider price before launch.
 - Keep the Pod stopped except during active setup, qualification, transfer, or
   approved training.
