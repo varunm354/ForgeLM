@@ -11,6 +11,7 @@ from typing import Any
 import torch
 from torch import nn
 
+from forgelm.data.production_data import validate_production_data_lock
 from forgelm.data.token_shards import (
     MemoryMappedShardDataset,
     load_manifest,
@@ -373,6 +374,28 @@ def validate_training_compatibility(
         raise ValueError("Configured tokenizer fingerprint does not match manifest.")
     if manifest["storage"] != {"dtype": "uint16", "byte_order": "little"}:
         raise ValueError("Training requires little-endian uint16 shards.")
+    if manifest["source"].get("dataset_name") == "HuggingFaceFW/fineweb-edu":
+        if (
+            manifest["source"].get("type") != "huggingface_streaming"
+            or manifest["source"].get("streaming") is not True
+        ):
+            raise ValueError(
+                "FineWeb-Edu training requires the pinned streaming source, "
+                "not a local fixture."
+            )
+        if expected is None:
+            raise ValueError(
+                "FineWeb-Edu training requires a pinned tokenizer fingerprint."
+            )
+        if training_config.production_data_lock_path is None:
+            raise ValueError(
+                "FineWeb-Edu training requires a verified production data lock."
+            )
+        validate_production_data_lock(
+            training_config.production_data_lock_path,
+            manifest_path=training_config.manifest_path,
+            expected_tokenizer_fingerprint=expected,
+        )
     return manifest, sha256_file(manifest_path)
 
 

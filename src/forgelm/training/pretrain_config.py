@@ -43,6 +43,7 @@ class PretrainConfig:
     metadata_filename: str
     verify_checksums: bool
     fixed_validation_batches: bool
+    production_data_lock_path: Path | None = None
 
     def __post_init__(self) -> None:
         for name in (
@@ -108,6 +109,11 @@ class PretrainConfig:
             raise ValueError(
                 "expected_tokenizer_fingerprint must be SHA-256 hexadecimal."
             )
+        if self.production_data_lock_path is not None and not isinstance(
+            self.production_data_lock_path,
+            Path,
+        ):
+            raise TypeError("production_data_lock_path must be a path or null.")
         for name in (
             "latest_checkpoint_name",
             "best_checkpoint_name",
@@ -140,7 +146,8 @@ class PretrainConfig:
         if not isinstance(values, dict):
             raise TypeError("Pretraining configuration must be a YAML mapping.")
         allowed = set(cls.__dataclass_fields__)
-        missing = sorted(allowed - values.keys())
+        optional = {"production_data_lock_path"}
+        missing = sorted(allowed - optional - values.keys())
         unknown = sorted(values.keys() - allowed)
         if missing:
             raise ValueError(f"Missing configuration fields: {', '.join(missing)}")
@@ -148,8 +155,15 @@ class PretrainConfig:
             raise ValueError(f"Unknown configuration fields: {', '.join(unknown)}")
         root = project_root if project_root is not None else source.parent
         converted = dict(values)
+        converted.setdefault("production_data_lock_path", None)
         for name in ("model_config_path", "manifest_path", "output_directory"):
             converted[name] = _resolve_path(converted[name], root, name)
+        if converted["production_data_lock_path"] is not None:
+            converted["production_data_lock_path"] = _resolve_path(
+                converted["production_data_lock_path"],
+                root,
+                "production_data_lock_path",
+            )
         betas = converted["betas"]
         if not isinstance(betas, list):
             raise TypeError("betas must be a YAML list.")

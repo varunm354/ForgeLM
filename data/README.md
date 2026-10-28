@@ -22,3 +22,8 @@ does not download the complete source into this directory; the preparation
 script writes packed binary shards and their manifest under `data/processed/`.
 See [`reports/scalable_data_pipeline.md`](../reports/scalable_data_pipeline.md)
 for the source, filtering, split, and reproducibility policies.
+
+Phase 4E-A's real-data workflow writes to a user-supplied persistent root
+outside this repository and is documented in
+[`reports/production_data_runbook.md`](../reports/production_data_runbook.md).
+The production tokenizer and FineWeb-Edu shards have not been created.

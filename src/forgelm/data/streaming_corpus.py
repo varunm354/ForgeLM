@@ -32,6 +32,9 @@ class CorpusStatistics:
     train_documents: int = 0
     validation_documents: int = 0
     total_raw_utf8_bytes: int = 0
+    total_accepted_utf8_bytes: int = 0
+    train_accepted_utf8_bytes: int = 0
+    validation_accepted_utf8_bytes: int = 0
     rejection_reasons: Counter[str] = field(default_factory=Counter)
 
     def to_dict(self) -> dict[str, Any]:
@@ -44,6 +47,9 @@ class CorpusStatistics:
             "train_documents": self.train_documents,
             "validation_documents": self.validation_documents,
             "total_raw_utf8_bytes": self.total_raw_utf8_bytes,
+            "total_accepted_utf8_bytes": self.total_accepted_utf8_bytes,
+            "train_accepted_utf8_bytes": self.train_accepted_utf8_bytes,
+            "validation_accepted_utf8_bytes": self.validation_accepted_utf8_bytes,
             "rejection_reasons": dict(sorted(self.rejection_reasons.items())),
         }
 
@@ -131,16 +137,20 @@ class StreamingDocumentPipeline:
                 seed=self.seed,
                 validation_fraction=self.validation_fraction,
             )
+            accepted_utf8_bytes = len(text.encode("utf-8"))
             self.statistics.documents_accepted += 1
+            self.statistics.total_accepted_utf8_bytes += accepted_utf8_bytes
             if split == "train":
                 self.statistics.train_documents += 1
+                self.statistics.train_accepted_utf8_bytes += accepted_utf8_bytes
             else:
                 self.statistics.validation_documents += 1
+                self.statistics.validation_accepted_utf8_bytes += accepted_utf8_bytes
             yield CorpusDocument(
                 text=text,
                 split=split,
                 sha256=identity.hex(),
-                utf8_bytes=len(text.encode("utf-8")),
+                utf8_bytes=accepted_utf8_bytes,
             )
 
     def _extract_text(

@@ -90,12 +90,23 @@ quality. The model has not been pretrained: the production tokenizer and
 fingerprint, 500-million-token FineWeb-Edu shards, short real-data gate,
 multi-GPU qualification, and paid pretraining remain incomplete.
 
+Phase 4E-A adds staged production-data readiness around the existing Phase 4A
+pipeline: a checksummed train-only tokenizer corpus, candidate tokenizer
+manifest and explicit fingerprint approval, replay-verified shard resumption,
+full artifact verification, and a production-data lock required by later
+FineWeb-Edu training. The workflow is implemented and tested only with bounded
+offline fixtures. The real production tokenizer has not been trained and
+FineWeb-Edu has not been processed.
+
 See the [BPE tokenizer report](reports/bpe_tokenizer.md) for the algorithm,
 compression results, and limitations, and the
 [BPE Transformer report](reports/bpe_transformer_baseline.md) for training and
 normalized evaluation results. The
 [scalable data pipeline report](reports/scalable_data_pipeline.md) documents
 the Phase 4A formats, reproducibility contract, and data-source considerations.
+The [production-data runbook](reports/production_data_runbook.md) documents
+the Phase 4E-A Stage A–E RunPod workflow, recovery policy, artifact review, and
+production lock.
 The [GPT 50M architecture report](reports/gpt_50m_architecture.md) documents
 the production model design, tensor shapes, exact parameter count, and
 remaining cloud-training work. The

@@ -59,11 +59,20 @@ def test_read_only_preflight_does_not_create_or_replace_outputs(
         local_source=True,
         force=True,
         document_limit=1,
+        persistent_root=tmp_path / "production-root",
     )
 
     assert report["passed"]
     assert report["mode"] == "read_only"
     assert report["source_probe"]["documents_yielded"] == 1
+    assert report["estimates"]["persistent_root"] == str(
+        (tmp_path / "production-root").resolve()
+    )
+    assert report["estimates"]["raw_token_storage_bytes"] > 0
+    assert report["estimates"]["active_temporary_shard_bytes"] > 0
+    assert report["estimates"]["tokenizer_corpus_payload_bytes"] > 0
+    assert report["resources"]["gpu_required"] is False
+    assert report["resources"]["runtime_estimate"] is None
     assert sentinel.read_text(encoding="utf-8") == "keep"
     assert not config.tokenizer_path.exists()
 

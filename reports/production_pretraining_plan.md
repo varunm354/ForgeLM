@@ -23,12 +23,16 @@ single-GPU CUDA qualification on synthetic data.
    was corrected by commit `658e350` before these passing runs.
 5. **Pending — production tokenizer training.** Train only on production
    training documents; do not use validation documents or the synthetic
-   qualification fixture.
+   qualification fixture. Phase 4E-A now provides the staged, checksummed
+   train-only corpus workflow, but it has not been run on FineWeb-Edu.
 6. **Pending — production tokenizer fingerprint.** Record the artifact SHA-256
    identity in the production training configuration and preserve the
-   tokenizer.
+   tokenizer. The explicit review/approval command exists; no production
+   fingerprint exists yet.
 7. **Pending — 500M-token shards and checksums.** Validate every FineWeb-Edu
-   shard and preserve the manifest before training.
+   shard and preserve the manifest before training. Restartable construction,
+   full verification, and the final production-data-lock format are ready only
+   on offline fixtures.
 8. **Pending — short FineWeb-Edu training run.** Use production shards with an
    explicit small step cap and inspect numerical behavior, throughput,
    validation, storage, and resume.
@@ -39,6 +43,12 @@ single-GPU CUDA qualification on synthetic data.
 
 Failure at any gate stops progression. A later gate does not waive an earlier
 one. Progression is currently blocked at Gate 5.
+
+Follow the
+[production-data runbook](production_data_runbook.md) for non-cascading
+Stages A–E. A later FineWeb-Edu training configuration must pin both the
+reviewed tokenizer fingerprint and the verified production-data lock; the
+runtime rejects production-source training without them.
 
 The compiled single-GPU path is the current production candidate based on the
 bounded qualification's higher throughput and lower latency and allocated

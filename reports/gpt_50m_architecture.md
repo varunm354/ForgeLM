@@ -135,17 +135,16 @@ These figures exclude gradients, optimizer states, activations, attention
 workspace, allocator overhead, checkpoints, and distributed-training copies.
 Actual training memory will be substantially higher.
 
-## Remaining work before cloud pretraining
+## Remaining work before production pretraining
 
-Phase 4B does not provide the cloud training loop. Remaining work includes
-mixed-precision policy, optimizer and learning-rate schedule, gradient
-accumulation and clipping, distributed data parallelism, deterministic
-memory-mapped shard iteration, resumable model/optimizer checkpoints,
-validation and metric reporting, accelerator throughput profiling, and
-failure-safe cloud artifact storage.
+Phase 4C added mixed precision, AdamW and scheduling, accumulation and
+clipping, DDP support, memory-mapped shards, exact checkpoints, validation,
+and metrics. Phase 4D then qualified the full model on one RTX 4090 in eager
+and compiled BF16 modes, including exact resumption.
 
-Phase 4D now pins the FineWeb-Edu revision, but the production tokenizer
+Phase 4E-A provides production tokenizer/shard readiness, but the tokenizer
 artifact and fingerprint remain unbuilt and the planned 500-million-token
-Phase 4A corpus remains unprocessed. Later inference work can add a KV cache
-and serving-specific generation controls without changing this architecture's
-training semantics.
+FineWeb-Edu corpus remains unprocessed. A short real-data canary and
+multi-GPU/NCCL qualification also remain incomplete. Later inference work can
+add a KV cache and serving-specific generation controls without changing this
+architecture's training semantics.

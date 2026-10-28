@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from forgelm.data.scalable_tokenizer import ScalableByteLevelTokenizer
 
 EOD = "<|endoftext|>"
@@ -65,3 +67,17 @@ def test_training_and_batch_encoding_are_deterministic() -> None:
     assert first.fingerprint() == second.fingerprint()
     assert first.encode_batch(texts) == [first.encode(text) for text in texts]
     assert first.encode_batch(texts) == second.encode_batch(texts)
+
+
+def test_loading_rejects_incompatible_special_token_contract(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "tokenizer.json"
+    _train().save(path)
+
+    with pytest.raises(ValueError, match="EOD token"):
+        ScalableByteLevelTokenizer.load(
+            path,
+            end_of_document_token="<|different-special-token|>",
+            expected_vocab_size=280,
+        )

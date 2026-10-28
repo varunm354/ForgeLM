@@ -42,6 +42,7 @@ def run_data_preflight(
     check_connectivity: bool = True,
     document_limit: int = 2,
     connectivity_probe: Callable[[], None] | None = None,
+    persistent_root: str | Path | None = None,
 ) -> dict[str, Any]:
     """Inspect configuration and a bounded source sample without writing files."""
     if document_limit < 1:
@@ -101,9 +102,14 @@ def run_data_preflight(
         config.target_tokens + config.validation_target_tokens
     ) * 2
     staging_headroom = config.tokens_per_shard * 2
+    metadata_and_progress_allowance = 10 * 1024 * 1024
     estimated_minimum_bytes = (
-        token_bytes + staging_headroom + config.tokenizer_training_bytes
+        token_bytes
+        + staging_headroom
+        + config.tokenizer_training_bytes
+        + metadata_and_progress_allowance
     )
+    recommended_free_bytes = max(estimated_minimum_bytes * 2, 10 * 1024**3)
     add(
         "storage_estimate",
         True,
@@ -111,7 +117,12 @@ def run_data_preflight(
         f"shards; raw token bytes approximately {token_bytes:,}.",
     )
 
-    disk_root = _nearest_existing_path(config.output_directory)
+    requested_root = (
+        Path(persistent_root).expanduser().resolve()
+        if persistent_root is not None
+        else config.output_directory
+    )
+    disk_root = _nearest_existing_path(requested_root)
     try:
         disk = shutil.disk_usage(disk_root)
     except OSError as error:
@@ -124,6 +135,15 @@ def run_data_preflight(
             free_bytes >= estimated_minimum_bytes,
             f"{free_bytes:,} bytes free at {disk_root}; conservative preparation "
             f"minimum {estimated_minimum_bytes:,} bytes.",
+        )
+        add(
+            "recommended_storage_headroom",
+            free_bytes >= recommended_free_bytes,
+            f"{free_bytes:,} bytes free at {disk_root}; recommended Phase 4E-A "
+            f"headroom {recommended_free_bytes:,} bytes. This is a storage safety "
+            "policy, not a runtime estimate.",
+            required=False,
+            category="storage",
         )
 
     paths_accessible = all(
@@ -280,11 +300,37 @@ def run_data_preflight(
         "passed": required_passed,
         "checks": checks,
         "estimates": {
+            "persistent_root": str(requested_root),
+            "inspected_disk_root": str(disk_root),
             "training_shards": train_shards,
             "validation_shards": validation_shards,
             "raw_token_storage_bytes": token_bytes,
+            "active_temporary_shard_bytes": staging_headroom,
+            "tokenizer_corpus_payload_bytes": config.tokenizer_training_bytes,
+            "tokenizer_corpus_framing": (
+                "8 bytes per document plus a fixed format header; exact overhead "
+                "is known only after corpus selection"
+            ),
+            "progress_manifest_log_allowance_bytes": (
+                metadata_and_progress_allowance
+            ),
             "conservative_minimum_free_bytes": estimated_minimum_bytes,
+            "recommended_free_bytes": recommended_free_bytes,
             "free_bytes": free_bytes,
+            "disk_capacity_bytes": None if free_bytes is None else disk.total,
+        },
+        "resources": {
+            "gpu_required": False,
+            "cpu": (
+                "CPU-oriented preprocessing; additional cores help Rust-backed "
+                "tokenization, but the build is intentionally single-process."
+            ),
+            "memory": (
+                "RAM must hold the Tokenizers trainer plus one encoded document "
+                "and an in-memory SHA-256 set for every unique document. Monitor "
+                "the real run because the deduplication set grows with corpus size."
+            ),
+            "runtime_estimate": None,
         },
         "tokenizer": tokenizer_status,
         "connectivity": connectivity,

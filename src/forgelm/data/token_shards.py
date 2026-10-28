@@ -4,7 +4,7 @@ import bisect
 import hashlib
 import json
 import os
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Literal
 
@@ -31,6 +31,8 @@ class BinaryTokenShardWriter:
         split: ShardSplit,
         tokens_per_shard: int,
         vocabulary_size: int,
+        existing_shards: Sequence[Mapping[str, Any]] | None = None,
+        on_shard_finalized: Callable[[list[dict[str, Any]]], None] | None = None,
     ) -> None:
         if split not in {"train", "validation"}:
             raise ValueError("split must be 'train' or 'validation'.")
@@ -41,8 +43,12 @@ class BinaryTokenShardWriter:
         self.split = split
         self.tokens_per_shard = tokens_per_shard
         self.vocabulary_size = vocabulary_size
-        self.shards: list[dict[str, Any]] = []
-        self.total_tokens = 0
+        self.shards = [dict(entry) for entry in existing_shards or ()]
+        self.total_tokens = sum(
+            int(entry.get("token_count", 0)) for entry in self.shards
+        )
+        self._initial_shard_count = len(self.shards)
+        self._on_shard_finalized = on_shard_finalized
         self._file: Any = None
         self._temporary_path: Path | None = None
         self._final_path: Path | None = None
@@ -50,6 +56,7 @@ class BinaryTokenShardWriter:
         self._maximum_token_id = -1
         self._checksum: Any = None
         self._finished = False
+        self._validate_existing_shards()
 
     def append(self, token_ids: Sequence[int]) -> None:
         """Append IDs, rolling over exactly at the configured token threshold."""
@@ -104,9 +111,9 @@ class BinaryTokenShardWriter:
         if self._temporary_path is not None:
             self._temporary_path.unlink(missing_ok=True)
         if remove_finalized:
-            for shard in self.shards:
+            for shard in self.shards[self._initial_shard_count :]:
                 (self.output_directory / shard["name"]).unlink(missing_ok=True)
-            self.shards.clear()
+            del self.shards[self._initial_shard_count :]
 
     def _open_shard(self) -> None:
         index = len(self.shards)
@@ -152,11 +159,36 @@ class BinaryTokenShardWriter:
                 "maximum_token_id": self._maximum_token_id,
             }
         )
+        if self._on_shard_finalized is not None:
+            self._on_shard_finalized(list(self.shards))
         self._temporary_path = None
         self._final_path = None
         self._shard_tokens = 0
         self._maximum_token_id = -1
         self._checksum = None
+
+    def _validate_existing_shards(self) -> None:
+        for index, entry in enumerate(self.shards):
+            _validate_shard_entry(entry, self.vocabulary_size)
+            expected_name = f"{self.split}-{index:05d}.bin"
+            if entry["name"] != expected_name:
+                raise ValueError(
+                    f"Existing {self.split} shard names are not deterministic."
+                )
+            if (
+                index < len(self.shards) - 1
+                and entry["token_count"] != self.tokens_per_shard
+            ):
+                raise ValueError(
+                    f"Existing {self.split} shard sequence has an early partial shard."
+                )
+            path = self.output_directory / entry["name"]
+            if not path.is_file():
+                raise ValueError(f"Existing shard is missing: {path}")
+            if path.stat().st_size != entry["byte_size"]:
+                raise ValueError(f"Existing shard byte size mismatch: {path}")
+            if sha256_file(path) != entry["sha256"]:
+                raise ValueError(f"Existing shard checksum mismatch: {path}")
 
 
 def build_token_shards(
@@ -211,7 +243,10 @@ def build_token_shards(
                     validation_writer.append(encoded[:remaining])
                     written_documents["validation"] += 1
 
-            if train_writer.total_tokens == target_tokens:
+            if (
+                train_writer.total_tokens == target_tokens
+                and validation_writer.total_tokens == validation_target_tokens
+            ):
                 break
 
         if train_writer.total_tokens < target_tokens:
@@ -223,10 +258,14 @@ def build_token_shards(
                 f"Accepted {statistics['documents_accepted']:,} documents; "
                 f"rejection counts: {statistics['rejection_reasons']}."
             )
-        if validation_writer.total_tokens == 0:
+        if validation_writer.total_tokens < validation_target_tokens:
+            statistics = pipeline.statistics.to_dict()
             raise ValueError(
-                "No validation tokens were produced before the training budget "
-                "was reached. Increase the source size or validation fraction."
+                "Source stream ended after "
+                f"{validation_writer.total_tokens:,} validation tokens; "
+                f"{validation_target_tokens:,} were requested. "
+                f"Accepted {statistics['documents_accepted']:,} documents; "
+                f"rejection counts: {statistics['rejection_reasons']}."
             )
 
         train_shards = train_writer.finish()

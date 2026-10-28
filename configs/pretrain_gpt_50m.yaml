@@ -2,6 +2,8 @@ model_config_path: configs/gpt_50m.yaml
 manifest_path: data/processed/fineweb_edu_500m/manifest.json
 # Fill this with the pinned Phase 4A tokenizer fingerprint before the paid run.
 expected_tokenizer_fingerprint: null
+# Fill this with the verified Phase 4E production-data lock on persistent storage.
+production_data_lock_path: null
 seed: 1337
 micro_batch_size: 8
 sequence_length: 1024

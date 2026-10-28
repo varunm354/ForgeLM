@@ -112,7 +112,15 @@ through a temporary path and atomically finalized.
 The output directory is assembled under a staging name and renamed only after
 all shards and the manifest validate. A completed or stale staging directory
 is refused unless `--force` is explicit. This is replacement, not partial-run
-continuation.
+continuation in the original all-in-one Phase 4A command.
+
+Phase 4E-A adds a separate staged production command without replacing that
+offline workflow. It persists a versioned progress file after each atomic
+full shard. Resume replays the immutable source from the beginning, rebuilds
+filtering/deduplication/split state, verifies committed token prefixes against
+the existing shard bytes, and only then appends. A source-order or content
+change fails instead of pretending a streaming cursor is exact. See the
+[production-data runbook](production_data_runbook.md).
 
 ## Memory-mapped training access
 
@@ -160,7 +168,8 @@ information removal, language balancing, quality rescoring, or near-duplicate
 detection in this phase.
 
 Other remaining limitations include the in-memory exact-hash set, two source
-passes when fitting a tokenizer, source-order dependence at finite budgets,
-single-process shard preparation, no cross-shard training windows, and no
-cloud object-store reader yet. Phase 4A only proves the scalable path with
-bounded local data. The planned final run remains 500 million training tokens.
+passes when fitting a tokenizer, replay from the beginning after an
+interruption, source-order dependence at finite budgets, single-process shard
+preparation, no cross-shard training windows, and no cloud object-store reader
+yet. Offline fixtures prove the implementation path, but the production
+tokenizer and planned 500 million training tokens still have not been created.

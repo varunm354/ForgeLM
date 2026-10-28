@@ -195,10 +195,10 @@ These are planned commands, not completed runs.
 
 The FineWeb-Edu revision is pinned by Phase 4D. The production tokenizer
 fingerprint must still be pinned and the 500-million-token corpus prepared.
-CUDA BF16/FP16, fused AdamW,
-`torch.compile`, NCCL DDP, cloud filesystem throughput, interruption delivery,
-and checkpoint upload/recovery need a short unpaid or tightly bounded cloud
-qualification run. Batch size, accumulation, compile behavior, validation
-cost, and checkpoint cadence may need adjustment from measured accelerator
-memory and throughput. The current token target rounds up to a complete global
-optimizer batch if it is not exactly divisible.
+Single-GPU RTX 4090 BF16, fused AdamW, eager and `torch.compile` execution, and
+exact checkpoint resumption passed the bounded Phase 4D qualification. NCCL
+DDP, production-data I/O, long-run checkpoint retention/upload, and provider
+interruption delivery remain unqualified. Phase 4E-A supplies the staged,
+restartable production-data workflow, but the real tokenizer and shards have
+not been created. Batch size, validation cost, and checkpoint cadence still
+require review with the short real-data canary.
