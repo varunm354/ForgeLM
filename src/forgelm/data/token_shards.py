@@ -227,27 +227,31 @@ def build_token_shards(
     written_documents = {"train": 0, "validation": 0}
 
     try:
-        for document in pipeline.process(records):
-            encoded = tokenizer.encode(document.text)
-            encoded.append(tokenizer.end_of_document_id)
-            if document.split == "train":
-                remaining = target_tokens - train_writer.total_tokens
-                if remaining > 0:
-                    train_writer.append(encoded[:remaining])
-                    written_documents["train"] += 1
-            else:
-                remaining = (
-                    validation_target_tokens - validation_writer.total_tokens
-                )
-                if remaining > 0:
-                    validation_writer.append(encoded[:remaining])
-                    written_documents["validation"] += 1
+        documents = pipeline.process(records)
+        try:
+            for document in documents:
+                encoded = tokenizer.encode(document.text)
+                encoded.append(tokenizer.end_of_document_id)
+                if document.split == "train":
+                    remaining = target_tokens - train_writer.total_tokens
+                    if remaining > 0:
+                        train_writer.append(encoded[:remaining])
+                        written_documents["train"] += 1
+                else:
+                    remaining = (
+                        validation_target_tokens - validation_writer.total_tokens
+                    )
+                    if remaining > 0:
+                        validation_writer.append(encoded[:remaining])
+                        written_documents["validation"] += 1
 
-            if (
-                train_writer.total_tokens == target_tokens
-                and validation_writer.total_tokens == validation_target_tokens
-            ):
-                break
+                if (
+                    train_writer.total_tokens == target_tokens
+                    and validation_writer.total_tokens == validation_target_tokens
+                ):
+                    break
+        finally:
+            documents.close()
 
         if train_writer.total_tokens < target_tokens:
             statistics = pipeline.statistics.to_dict()

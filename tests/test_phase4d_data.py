@@ -77,6 +77,44 @@ def test_read_only_preflight_does_not_create_or_replace_outputs(
     assert not config.tokenizer_path.exists()
 
 
+def test_bounded_preflight_closes_partially_consumed_source(tmp_path: Path) -> None:
+    class CloseTrackingIterator:
+        def __init__(self) -> None:
+            self.closed = False
+            self.count = 0
+
+        def __iter__(self) -> "CloseTrackingIterator":
+            return self
+
+        def __next__(self) -> dict[str, str]:
+            self.count += 1
+            return {"text": f"bounded source row {self.count}"}
+
+        def close(self) -> None:
+            self.closed = True
+
+    source = CloseTrackingIterator()
+    config = PretrainingDataConfig.load(
+        SMOKE_CONFIG,
+        project_root=PROJECT_ROOT,
+    ).with_overrides(
+        output_directory=tmp_path / "output",
+        tokenizer_path=tmp_path / "tokenizer.json",
+    )
+
+    report = run_data_preflight(
+        config,
+        source_factory=lambda: source,
+        local_source=True,
+        force=False,
+        document_limit=2,
+    )
+
+    assert report["source_probe"]["documents_yielded"] == 2
+    assert source.count == 2
+    assert source.closed
+
+
 def test_connectivity_failure_is_separate_from_configuration_failure(
     tmp_path: Path,
 ) -> None:

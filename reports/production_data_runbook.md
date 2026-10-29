@@ -2,13 +2,16 @@
 
 ## Status and scope
 
-Phase 4E-A makes the existing Phase 4A pipeline ready for a staged production
-execution on persistent storage. It does not contain production artifacts.
-The 16,384-token tokenizer has not been trained, FineWeb-Edu has not been
-processed, and no 500-million-token model-training run has started.
+Phase 4E-A artifacts were completed and independently verified on persistent
+storage at `/workspace/forgelm-production/fineweb-edu-500m-v1`. The lock
+identity is
+`a973f330ba67708bd306156628266d763d6875a11d02e187613e6cf045efce1d`;
+the tokenizer fingerprint is
+`2f420b82fe239f8a80283ac8adb4abe956e3a7192321da1fbc4b36854144a740`.
+The lock remains `complete_verified_not_training_approval`: it verifies data
+but does not authorize either the Phase 4E-B canary or full pretraining.
 
-CUDA qualification remains passed. Data preparation is CPU-oriented and does
-not need a GPU.
+CUDA qualification remains passed. No real-data model training has started.
 
 ## Existing implementation reused
 
@@ -261,12 +264,198 @@ Before Phase 4E-B or any model training:
 
 1. Preserve Stage A–E logs and reports off-Pod.
 2. Review the tokenizer corpus and tokenizer identities.
-3. Pin the reviewed tokenizer fingerprint in `configs/pretrain_gpt_50m.yaml`.
-4. Point `production_data_lock_path` at the verified persistent lock.
-5. Review exact train/validation counts and every shard checksum.
-6. Review source rights, privacy, removal, and content-policy limitations.
-7. Create a separately bounded real-data canary configuration.
-8. Obtain explicit approval for that canary only.
+3. Review exact train/validation counts and every shard checksum.
+4. Review source rights, privacy, removal, and content-policy limitations.
+5. Review `configs/pretrain_gpt_production_canary.yaml`.
+6. Obtain explicit approval for the bounded canary only.
 
-Multi-GPU qualification, the short FineWeb-Edu canary, and full paid
-pretraining remain incomplete.
+Do not pin or launch `configs/pretrain_gpt_50m.yaml` yet.
+
+## Stage D shutdown failure and lifecycle correction
+
+Stage D reached its exact shard totals and published its final manifest before
+Python aborted during interpreter shutdown with a `PyGILState_Release` fatal
+error. Stage E subsequently re-read and checksum-verified all 51 shards, so
+the shutdown failure did not invalidate or conceal the artifact result.
+
+The failure signature matches the upstream PyArrow partial-Parquet-stream
+teardown race seen with Python 3.12. ForgeLM's locked environment uses
+`datasets 5.1.0` and PyArrow `26.0.0`. Stage D necessarily stops the
+FineWeb-Edu stream as soon as both exact token targets are met. Previously,
+that partially consumed iterator could leave Arrow prefetch objects to be
+destroyed during interpreter finalization, when a worker can no longer safely
+release the GIL.
+
+ForgeLM now closes every streamed iterator deterministically when a bounded
+consumer stops and runs cyclic garbage collection before the production-data
+CLI returns to interpreter shutdown. This is lifecycle cleanup, not error
+suppression: source, tokenization, shard, checksum, and close failures still
+propagate and produce a nonzero exit. No dependency was changed. On the next
+remote streaming command, preserve stdout, stderr, and the shell exit code to
+confirm clean process termination in that environment.
+
+## Phase 4E-B — bounded production-data CUDA canary
+
+The canary is a separate command and configuration. It cannot launch the
+500-million-token schedule. Its immutable limits and required settings are:
+
+- one CUDA rank with no CPU fallback;
+- the full 49,295,872-parameter model;
+- 1,024-token sequences;
+- explicit BF16 autocast;
+- micro-batch 1 and two accumulation micro-steps;
+- four optimizer steps and 8,192 training tokens total;
+- one fixed validation batch after every optimizer step;
+- eager mode only;
+- live verification of the production lock, tokenizer bundle, manifests, all
+  shard checksums, data configuration, model configuration, and exact pinned
+  identities before model construction;
+- a simulated safe interruption after step 1, an interruption checkpoint,
+  strict exact resume, and three post-resume steps.
+
+The runner writes `canary_report.json`, `metrics.jsonl`, metadata, and hashed
+checkpoints. Fresh execution refuses any non-empty output directory. There is
+no force/delete option. Exact resume requires a checkpoint inside the same
+output directory, and checkpoint compatibility binds the full resolved
+training config, model config, manifest hash, tokenizer fingerprint, world
+size, and precision.
+
+### Exact RunPod commands
+
+Use the same repository checkout that contains this phase. Keep shell
+`pipefail` enabled so `tee` cannot convert a failing canary into a successful
+shell status:
+
+```bash
+set -euo pipefail
+export FORGELM_ROOT=/workspace/ForgeLM
+export PRODUCTION_ROOT=/workspace/forgelm-production/fineweb-edu-500m-v1
+export CANARY_PARENT=/workspace/forgelm-output
+export CANARY_OUTPUT="$CANARY_PARENT/fineweb-edu-canary-$(date -u +%Y%m%dT%H%M%SZ)"
+export EXPECTED_TOKENIZER_FINGERPRINT=2f420b82fe239f8a80283ac8adb4abe956e3a7192321da1fbc4b36854144a740
+export EXPECTED_PRODUCTION_LOCK_IDENTITY=a973f330ba67708bd306156628266d763d6875a11d02e187613e6cf045efce1d
+
+cd "$FORGELM_ROOT"
+mkdir -p "$CANARY_PARENT" "$PRODUCTION_ROOT/logs"
+git status --short
+git rev-parse HEAD
+bash scripts/setup_runpod.sh
+```
+
+Re-run Stage E as a read-only verification of the already locked artifacts:
+
+```bash
+uv run python scripts/prepare_production_data.py \
+  --stage verify \
+  --config configs/pretraining_data.yaml \
+  --root "$PRODUCTION_ROOT" \
+  2>&1 | tee "$PRODUCTION_ROOT/logs/stage-e-pre-canary-verify.log"
+```
+
+Confirm the checked-in canary configuration and launch exactly four steps:
+
+```bash
+uv run python scripts/run_production_canary.py run \
+  --config configs/pretrain_gpt_production_canary.yaml \
+  --data-config configs/pretraining_data.yaml \
+  --output-dir "$CANARY_OUTPUT" \
+  --max-optimizer-steps 4 \
+  --expected-production-lock-identity \
+    "$EXPECTED_PRODUCTION_LOCK_IDENTITY" \
+  2>&1 | tee "$PRODUCTION_ROOT/logs/phase-4e-b-canary.log"
+```
+
+The command must exit `0` and the report must say `passed: true`. It must
+report `main_training_started: false`, four optimizer steps, eight
+micro-steps, 8,192 training tokens, at least one validation record, a resume
+start at step 1, and at least one post-resume step.
+
+### Safe resume
+
+The normal command performs its own interruption/resume sequence. If the Pod
+or process exits after the step-1 interruption checkpoint was published,
+reuse the same output directory and exact config:
+
+```bash
+uv run python scripts/run_production_canary.py run \
+  --config configs/pretrain_gpt_production_canary.yaml \
+  --data-config configs/pretraining_data.yaml \
+  --output-dir "$CANARY_OUTPUT" \
+  --resume-checkpoint "$CANARY_OUTPUT/interrupt_step_00000001.pt" \
+  --max-optimizer-steps 4 \
+  --expected-production-lock-identity \
+    "$EXPECTED_PRODUCTION_LOCK_IDENTITY" \
+  2>&1 | tee "$PRODUCTION_ROOT/logs/phase-4e-b-canary-resume.log"
+```
+
+Do not use resume to rerun an already passing report. Verify it instead. To
+repeat the canary, choose a new timestamped output directory.
+
+### Independent report and artifact verification
+
+```bash
+uv run python scripts/run_production_canary.py verify \
+  --report "$CANARY_OUTPUT/canary_report.json" \
+  --expected-production-lock-identity \
+    "$EXPECTED_PRODUCTION_LOCK_IDENTITY" \
+  --expected-tokenizer-fingerprint \
+    "$EXPECTED_TOKENIZER_FINGERPRINT" \
+  | tee "$PRODUCTION_ROOT/logs/phase-4e-b-canary-verification.log"
+```
+
+The verifier rejects a failed report, changed hard bounds, an identity
+mismatch, any failed acceptance criterion, or any changed/missing lock,
+manifest, tokenizer, model config, metrics, metadata, or checkpoint.
+
+### Acceptance criteria
+
+Every required criterion in `canary_report.json` must pass:
+
+1. exact production lock, tokenizer, data config, source, manifest, shard
+   metadata, and live checksums;
+2. distinct training and validation shard sets and
+   `validation_used_for_training: false`;
+3. one CUDA rank, 49,295,872 parameters, sequence length 1,024, and BF16 AMP;
+4. finite probe/training loss and gradients;
+5. optimizer updates, validation, interruption checkpoint, strict checkpoint
+   load, exact counters/RNG/sampler resume, and post-resume updates;
+6. complete loss, LR, gradient norm, throughput, token count, timing, VRAM,
+   configuration, and artifact-identity evidence;
+7. exactly four or fewer approved optimizer steps and no main-training launch.
+
+Any missing evidence is a failure, not a warning.
+
+### Expected duration and approximate RTX 4090 cost
+
+The four updates themselves are sub-second on the previously qualified RTX
+4090. End-to-end time is dominated by repeatedly hashing about 1.01 GB of
+locked shards, model/optimizer construction, and several roughly 600 MB
+checkpoint writes. Budget **5–10 minutes** on a healthy persistent volume,
+excluding Pod provisioning and environment installation.
+
+At the October 2026 listed RTX 4090 rates of approximately **$0.34/GPU-hour**
+Community or **$0.89/GPU-hour** Secure, 5–10 minutes is roughly
+**$0.03–$0.06 Community** or **$0.07–$0.15 Secure**. Storage, idle/provisioning
+time, taxes, and current regional pricing are additional. Check the live rate
+before launch and stop the Pod promptly after evidence is preserved.
+
+## Gates remaining before main pretraining
+
+Even after a passing canary, do not start the 500M-token run until all of the
+following are complete:
+
+1. preserve and independently verify the canary report, metrics, metadata,
+   checkpoints, Stage E output, and shell exit codes;
+2. review real-data loss, gradient norm, throughput, VRAM, and validation for
+   anomalies without treating four steps as a quality result;
+3. review source rights, privacy, takedown, and content-policy obligations;
+4. decide eager versus compiled mode for the full run; this canary qualifies
+   only eager BF16;
+5. set and review the final single- or multi-GPU topology. Multi-GPU/NCCL
+   remains unqualified;
+6. estimate full-run duration, checkpoint storage, and spend from the canary
+   evidence and set a budget/stop policy;
+7. pin the production fingerprint and lock in the final full-run config,
+   review its complete diff, and obtain explicit main-training approval.
+
+The main 500M-token run remains unstarted and unapproved.

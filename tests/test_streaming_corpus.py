@@ -122,6 +122,34 @@ def test_line_endings_change_only_when_enabled() -> None:
     assert normalized.text == "line one\nline two\nline three"
 
 
+def test_partial_stream_is_closed_before_interpreter_shutdown() -> None:
+    class CloseTrackingIterator:
+        def __init__(self) -> None:
+            self.closed = False
+            self.index = 0
+
+        def __iter__(self) -> "CloseTrackingIterator":
+            return self
+
+        def __next__(self) -> dict[str, str]:
+            if self.index >= 3:
+                raise StopIteration
+            self.index += 1
+            return {"text": f"streamed production document {self.index}"}
+
+        def close(self) -> None:
+            self.closed = True
+
+    source = CloseTrackingIterator()
+    processed = _pipeline().process(source)
+
+    next(processed)
+    processed.close()
+
+    assert source.closed
+    assert source.index == 1
+
+
 def test_tokenizer_sample_contains_training_documents_only() -> None:
     records = [{"text": f"synthetic sample document {index}"} for index in range(50)]
     expected_train = {

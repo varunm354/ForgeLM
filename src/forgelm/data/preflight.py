@@ -357,12 +357,17 @@ def _probe_source(
     result["attempted"] = True
     try:
         iterator = iter(source_factory())
-        for _ in range(limit):
-            try:
-                next(iterator)
-            except StopIteration:
-                break
-            result["documents_yielded"] += 1
+        try:
+            for _ in range(limit):
+                try:
+                    next(iterator)
+                except StopIteration:
+                    break
+                result["documents_yielded"] += 1
+        finally:
+            close = getattr(iterator, "close", None)
+            if callable(close):
+                close()
     except Exception as error:  # noqa: BLE001 - Datasets raises backend-specific errors
         result["error"] = f"{type(error).__name__}: {error}"
         add(

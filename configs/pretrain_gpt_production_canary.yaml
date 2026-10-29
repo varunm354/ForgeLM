@@ -1,0 +1,31 @@
+model_config_path: configs/gpt_50m.yaml
+manifest_path: /workspace/forgelm-production/fineweb-edu-500m-v1/shards/manifest.json
+expected_tokenizer_fingerprint: 2f420b82fe239f8a80283ac8adb4abe956e3a7192321da1fbc4b36854144a740
+production_data_lock_path: /workspace/forgelm-production/fineweb-edu-500m-v1/manifests/production-data-lock.json
+seed: 1337
+micro_batch_size: 1
+sequence_length: 1024
+gradient_accumulation_steps: 2
+# Hard bound: 4 optimizer steps × 1 × 1,024 × 2 = 8,192 train tokens.
+target_training_tokens: 8192
+learning_rate: 0.0006
+minimum_learning_rate: 0.00006
+warmup_steps: 2
+weight_decay: 0.1
+betas: [0.9, 0.95]
+epsilon: 0.00000001
+gradient_clipping: 1.0
+logging_interval: 1
+validation_interval: 1
+validation_batches: 1
+checkpoint_interval: 2
+precision: bfloat16
+torch_compile: false
+compile_allow_fallback: false
+output_directory: /workspace/forgelm-output/fineweb-edu-canary-v1
+latest_checkpoint_name: latest.pt
+best_checkpoint_name: best.pt
+metrics_filename: metrics.jsonl
+metadata_filename: run_metadata.json
+verify_checksums: true
+fixed_validation_batches: true

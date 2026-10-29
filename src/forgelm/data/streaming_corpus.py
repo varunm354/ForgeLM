@@ -4,6 +4,7 @@ import hashlib
 import json
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping
+from contextlib import closing
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -104,54 +105,60 @@ class StreamingDocumentPipeline:
         records: Iterable[str | Mapping[str, Any]],
     ) -> Iterator[CorpusDocument]:
         """Yield valid, unique records from strings or mapping-like dataset rows."""
-        for record in records:
-            self.statistics.documents_seen += 1
-            text, reason = self._extract_text(record)
-            if reason is not None:
-                self._reject(reason)
-                continue
-            if text is None:
-                raise RuntimeError("Validated text unexpectedly missing.")
+        iterator = iter(records)
+        try:
+            for record in iterator:
+                self.statistics.documents_seen += 1
+                text, reason = self._extract_text(record)
+                if reason is not None:
+                    self._reject(reason)
+                    continue
+                if text is None:
+                    raise RuntimeError("Validated text unexpectedly missing.")
 
-            self.statistics.total_raw_utf8_bytes += len(text.encode("utf-8"))
-            if self.normalize_line_endings:
-                text = text.replace("\r\n", "\n").replace("\r", "\n")
-            if not text.strip():
-                self._reject("empty")
-                continue
-            if len(text) < self.minimum_characters:
-                self._reject("too_short")
-                continue
-            if len(text) > self.maximum_characters:
-                self._reject("too_long")
-                continue
+                self.statistics.total_raw_utf8_bytes += len(text.encode("utf-8"))
+                if self.normalize_line_endings:
+                    text = text.replace("\r\n", "\n").replace("\r", "\n")
+                if not text.strip():
+                    self._reject("empty")
+                    continue
+                if len(text) < self.minimum_characters:
+                    self._reject("too_short")
+                    continue
+                if len(text) > self.maximum_characters:
+                    self._reject("too_long")
+                    continue
 
-            identity = hashlib.sha256(text.encode("utf-8")).digest()
-            if identity in self._document_hashes:
-                self.statistics.documents_duplicated += 1
-                continue
-            self._document_hashes.add(identity)
+                identity = hashlib.sha256(text.encode("utf-8")).digest()
+                if identity in self._document_hashes:
+                    self.statistics.documents_duplicated += 1
+                    continue
+                self._document_hashes.add(identity)
 
-            split = assign_document_split(
-                identity,
-                seed=self.seed,
-                validation_fraction=self.validation_fraction,
-            )
-            accepted_utf8_bytes = len(text.encode("utf-8"))
-            self.statistics.documents_accepted += 1
-            self.statistics.total_accepted_utf8_bytes += accepted_utf8_bytes
-            if split == "train":
-                self.statistics.train_documents += 1
-                self.statistics.train_accepted_utf8_bytes += accepted_utf8_bytes
-            else:
-                self.statistics.validation_documents += 1
-                self.statistics.validation_accepted_utf8_bytes += accepted_utf8_bytes
-            yield CorpusDocument(
-                text=text,
-                split=split,
-                sha256=identity.hex(),
-                utf8_bytes=accepted_utf8_bytes,
-            )
+                split = assign_document_split(
+                    identity,
+                    seed=self.seed,
+                    validation_fraction=self.validation_fraction,
+                )
+                accepted_utf8_bytes = len(text.encode("utf-8"))
+                self.statistics.documents_accepted += 1
+                self.statistics.total_accepted_utf8_bytes += accepted_utf8_bytes
+                if split == "train":
+                    self.statistics.train_documents += 1
+                    self.statistics.train_accepted_utf8_bytes += accepted_utf8_bytes
+                else:
+                    self.statistics.validation_documents += 1
+                    self.statistics.validation_accepted_utf8_bytes += accepted_utf8_bytes
+                yield CorpusDocument(
+                    text=text,
+                    split=split,
+                    sha256=identity.hex(),
+                    utf8_bytes=accepted_utf8_bytes,
+                )
+        finally:
+            close = getattr(iterator, "close", None)
+            if callable(close):
+                close()
 
     def _extract_text(
         self,
@@ -216,23 +223,24 @@ def collect_tokenizer_training_documents(
 
     documents: list[str] = []
     collected_bytes = 0
-    for document in pipeline.process(records):
-        if document.split != "train":
-            continue
-        remaining = byte_budget - collected_bytes
-        if remaining <= 0:
-            break
-        encoded = document.text.encode("utf-8")
-        if len(encoded) > remaining:
-            truncated = encoded[:remaining].decode("utf-8", errors="ignore")
-            if truncated:
-                documents.append(truncated)
-                collected_bytes += len(truncated.encode("utf-8"))
-            break
-        documents.append(document.text)
-        collected_bytes += len(encoded)
-        if collected_bytes == byte_budget:
-            break
+    with closing(pipeline.process(records)) as processed:
+        for document in processed:
+            if document.split != "train":
+                continue
+            remaining = byte_budget - collected_bytes
+            if remaining <= 0:
+                break
+            encoded = document.text.encode("utf-8")
+            if len(encoded) > remaining:
+                truncated = encoded[:remaining].decode("utf-8", errors="ignore")
+                if truncated:
+                    documents.append(truncated)
+                    collected_bytes += len(truncated.encode("utf-8"))
+                break
+            documents.append(document.text)
+            collected_bytes += len(encoded)
+            if collected_bytes == byte_budget:
+                break
     return documents, collected_bytes
 
 

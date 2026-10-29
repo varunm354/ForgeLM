@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
@@ -48,7 +49,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> int:
+def _run_stage() -> int:
     args = parse_args()
     config = PretrainingDataConfig.load(
         args.config.resolve(),
@@ -184,6 +185,16 @@ def main() -> int:
         }
     )
     return 0
+
+
+def main() -> int:
+    """Run one stage and finalize cyclic streaming resources before shutdown."""
+    try:
+        return _run_stage()
+    finally:
+        # PyArrow may retain partially consumed Parquet readers in reference
+        # cycles. Collect them while the interpreter and GIL are still live.
+        gc.collect()
 
 
 def _source(

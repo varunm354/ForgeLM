@@ -498,30 +498,34 @@ def build_shard_stage(
     pipeline = _make_pipeline(config)
     processed_documents = 0
     try:
-        for document in pipeline.process(source_factory()):
-            encoded = tokenizer.encode(document.text)
-            encoded.append(tokenizer.end_of_document_id)
-            split = document.split
-            take = min(
-                len(encoded),
-                targets[split] - logical_tokens[split],
-            )
-            if take > 0:
-                output_tokens = encoded[:take]
-                written_documents[split] += 1
-                logical_tokens[split] += take
-                unwritten = committed[split].consume(output_tokens)
-                writers[split].append(unwritten)
-            processed_documents += 1
-            if (
-                interrupt_after_documents is not None
-                and processed_documents >= interrupt_after_documents
-            ):
-                raise BuildInterrupted(
-                    "Simulated interruption after a safe document boundary."
+        documents = pipeline.process(source_factory())
+        try:
+            for document in documents:
+                encoded = tokenizer.encode(document.text)
+                encoded.append(tokenizer.end_of_document_id)
+                split = document.split
+                take = min(
+                    len(encoded),
+                    targets[split] - logical_tokens[split],
                 )
-            if all(logical_tokens[name] == targets[name] for name in targets):
-                break
+                if take > 0:
+                    output_tokens = encoded[:take]
+                    written_documents[split] += 1
+                    logical_tokens[split] += take
+                    unwritten = committed[split].consume(output_tokens)
+                    writers[split].append(unwritten)
+                processed_documents += 1
+                if (
+                    interrupt_after_documents is not None
+                    and processed_documents >= interrupt_after_documents
+                ):
+                    raise BuildInterrupted(
+                        "Simulated interruption after a safe document boundary."
+                    )
+                if all(logical_tokens[name] == targets[name] for name in targets):
+                    break
+        finally:
+            documents.close()
 
         for split, target in targets.items():
             if logical_tokens[split] != target:
@@ -861,26 +865,30 @@ def _build_or_load_tokenizer_corpus(
     try:
         with corpus_path.open("xb") as handle:
             handle.write(TOKENIZER_CORPUS_MAGIC)
-            for document in pipeline.process(source_factory()):
-                if document.split != "train":
-                    continue
-                remaining = config.tokenizer_training_bytes - corpus_bytes
-                if remaining <= 0:
-                    break
-                payload = document.text.encode("utf-8")
-                if len(payload) > remaining:
-                    text = payload[:remaining].decode("utf-8", errors="ignore")
-                    payload = text.encode("utf-8")
-                    deterministically_capped = True
-                if payload:
-                    handle.write(struct.pack(">Q", len(payload)))
-                    handle.write(payload)
-                    corpus_bytes += len(payload)
-                    documents_written += 1
-                if corpus_bytes >= config.tokenizer_training_bytes or (
-                    deterministically_capped
-                ):
-                    break
+            documents = pipeline.process(source_factory())
+            try:
+                for document in documents:
+                    if document.split != "train":
+                        continue
+                    remaining = config.tokenizer_training_bytes - corpus_bytes
+                    if remaining <= 0:
+                        break
+                    payload = document.text.encode("utf-8")
+                    if len(payload) > remaining:
+                        text = payload[:remaining].decode("utf-8", errors="ignore")
+                        payload = text.encode("utf-8")
+                        deterministically_capped = True
+                    if payload:
+                        handle.write(struct.pack(">Q", len(payload)))
+                        handle.write(payload)
+                        corpus_bytes += len(payload)
+                        documents_written += 1
+                    if corpus_bytes >= config.tokenizer_training_bytes or (
+                        deterministically_capped
+                    ):
+                        break
+            finally:
+                documents.close()
             handle.flush()
             os.fsync(handle.fileno())
         if corpus_bytes == 0:
@@ -1006,15 +1014,19 @@ def _verify_replayed_prefix(
         for split in ("train", "validation")
     }
     pipeline = _make_pipeline(config)
-    for document in pipeline.process(source_factory()):
-        verifier = verifiers[document.split]
-        if verifier.complete:
-            continue
-        encoded = tokenizer.encode(document.text)
-        encoded.append(tokenizer.end_of_document_id)
-        verifier.consume(encoded)
-        if all(item.complete for item in verifiers.values()):
-            return
+    documents = pipeline.process(source_factory())
+    try:
+        for document in documents:
+            verifier = verifiers[document.split]
+            if verifier.complete:
+                continue
+            encoded = tokenizer.encode(document.text)
+            encoded.append(tokenizer.end_of_document_id)
+            verifier.consume(encoded)
+            if all(item.complete for item in verifiers.values()):
+                return
+    finally:
+        documents.close()
     incomplete = [split for split, verifier in verifiers.items() if not verifier.complete]
     raise ValueError(
         "Pinned source replay did not reproduce committed shard prefixes: "
